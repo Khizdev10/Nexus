@@ -20,7 +20,7 @@ export default async function Home() {
           <h1 className="text-4xl sm:text-6xl font-extrabold tracking-tight text-white">
             Welcome to{" "}
             <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
-              Devi
+              Nexus
             </span>
           </h1>
           <p className="mx-auto max-w-2xl text-lg text-zinc-400 leading-relaxed">
