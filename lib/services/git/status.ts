@@ -5,7 +5,7 @@ import { DevOSGitStatus } from "@/types/devos";
 
 const localStatusCache = new Map<string, { status: DevOSGitStatus; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 1000; // 5 seconds in-memory cache
-/**
+/*
  * Ultra-fast single-command local Git status inspection service (<30ms per repo)
  * Combines branch, ahead/behind, and working tree state into 1 single 'git status -b --porcelain' call.
  */
