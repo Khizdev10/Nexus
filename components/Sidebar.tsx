@@ -12,6 +12,7 @@ import {
   Settings,
   ChevronDown,
   GitBranch,
+  KeyRound,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -142,6 +143,35 @@ export default function Sidebar() {
               </div>
             )}
           </div>
+
+          {/* Environment Manager Subsystem */}
+          <Link
+            href="/dashboard/env-manager"
+            prefetch={true}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              pathname === "/dashboard/env-manager"
+                ? "bg-indigo-600/15 border border-indigo-500/40 text-white shadow-md shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-white hover:bg-zinc-800/60 border border-transparent"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <KeyRound
+                className={`w-4 h-4 transition-colors ${
+                  pathname === "/dashboard/env-manager" ? "text-indigo-400" : "text-zinc-400"
+                }`}
+              />
+              <span>Environment Manager</span>
+            </div>
+            <span
+              className={`text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded ${
+                pathname === "/dashboard/env-manager"
+                  ? "bg-indigo-500/30 text-indigo-300 border border-indigo-500/40"
+                  : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+              }`}
+            >
+              ENV
+            </span>
+          </Link>
 
           {/* Analytics */}
           <Link
