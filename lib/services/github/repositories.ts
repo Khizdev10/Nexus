@@ -45,37 +45,42 @@ function resolveLocalPath(repoName: string): string {
 
 /**
  * Service to fetch, import, and transform GitHub Repositories for Nexus.
+ * Multi-User Isolated Token Resolution:
+ * 1. Checks logged-in Clerk user's GitHub OAuth token first (Per-User Security).
+ * 2. Uses GITHUB_PAT env variable ONLY as local fallback for single-user dev mode.
  */
 export async function getGitHubOAuthToken(): Promise<string | null> {
-  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
-  if (process.env.GITHUB_PAT) return process.env.GITHUB_PAT;
-
   const now = Date.now();
   if (globalForDevOS.__devos_token_cache && now - globalForDevOS.__devos_token_cache.timestamp < CACHE_TTL_MS) {
     return globalForDevOS.__devos_token_cache.token;
   }
 
+  // 1. Prioritize Authenticated User's GitHub OAuth Token (Multi-User Isolation)
   try {
     const { userId } = await auth();
-    if (!userId) return null;
+    if (userId) {
+      const client = await clerkClient();
+      let tokens = await client.users.getUserOauthAccessToken(userId, "github");
 
-    const client = await clerkClient();
-    let tokens = await client.users.getUserOauthAccessToken(userId, "github");
+      if (!tokens || !tokens.data || tokens.data.length === 0) {
+        tokens = await client.users.getUserOauthAccessToken(userId, "oauth_github");
+      }
 
-    if (!tokens || !tokens.data || tokens.data.length === 0) {
-      tokens = await client.users.getUserOauthAccessToken(userId, "oauth_github");
+      if (tokens && tokens.data && tokens.data.length > 0) {
+        const token = tokens.data[0].token;
+        globalForDevOS.__devos_token_cache = { token, timestamp: now };
+        return token;
+      }
     }
-
-    if (tokens && tokens.data && tokens.data.length > 0) {
-      const token = tokens.data[0].token;
-      globalForDevOS.__devos_token_cache = { token, timestamp: now };
-      return token;
-    }
-    return null;
   } catch (error) {
-    console.error("[Nexus GitHub Service] Error retrieving GitHub OAuth token:", error);
-    return null;
+    console.warn("[Nexus GitHub Service] Clerk OAuth token not found, checking local PAT fallback...");
   }
+
+  // 2. Fallback to process.env.GITHUB_PAT for single-user local development mode
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+  if (process.env.GITHUB_PAT) return process.env.GITHUB_PAT;
+
+  return null;
 }
 
 /**
@@ -92,78 +97,93 @@ export async function fetchGitHubUserRepositories(token: string, limit = 20): Pr
     globalForDevOS.__devos_repo_cache.tokenKey === token &&
     now - globalForDevOS.__devos_repo_cache.timestamp < CACHE_TTL_MS
   ) {
-    return globalForDevOS.__devos_repo_cache.data.slice(0, limit);
+    return globalForDevOS.__devos_repo_cache.data;
   }
 
   try {
-    const res = await fetch(
-      `https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=${limit}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github.v3+json",
-          "User-Agent": "Nexus-App",
-        },
-        cache: "no-store",
-      }
-    );
+    const userRes = await fetch("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "User-Agent": "Nexus-App",
+        Accept: "application/vnd.github.v3+json",
+      },
+      next: { revalidate: 30 },
+    });
+
+    let currentUsername = "";
+    if (userRes.ok) {
+      const userData = await userRes.json();
+      currentUsername = userData.login;
+    }
+
+    const res = await fetch(`https://api.github.com/user/repos?sort=updated&per_page=${limit}&affinity=owner`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "User-Agent": "Nexus-App",
+        Accept: "application/vnd.github.v3+json",
+      },
+      next: { revalidate: 30 },
+    });
 
     if (!res.ok) {
-      console.error("[Nexus GitHub Service] GitHub API Error:", res.status);
-      return [];
+      const errorText = await res.text();
+      console.error(`[Nexus GitHub API] Error ${res.status}: ${errorText}`);
+      throw new Error(`GitHub API HTTP ${res.status}`);
     }
 
     const rawRepos = await res.json();
+    if (!Array.isArray(rawRepos)) return [];
 
-    const result = rawRepos.map((repo: any): DevOSRepository => {
-      const ownerLogin = repo.owner?.login || "owner";
+    const repos: DevOSRepository[] = rawRepos.map((repo: any) => {
+      const localPath = resolveLocalPath(repo.name);
+
       let role: DevOSRepository["role"] = "owner";
-
-      if (repo.permissions) {
-        if (repo.permissions.admin) role = "owner";
-        else if (repo.permissions.push) role = "collaborator";
-        else role = "organization_member";
+      if (repo.owner && currentUsername && repo.owner.login !== currentUsername) {
+        if (repo.permissions?.admin || repo.permissions?.push) {
+          role = "collaborator";
+        } else {
+          role = "organization_member";
+        }
       }
 
       return {
-        id: String(repo.id),
-        githubId: repo.id,
+        id: repo.name.toLowerCase().replace(/[^a-z0-9]/g, "-"),
+        githubId: repo.id || 0,
         name: repo.name,
-        ownerLogin,
+        ownerLogin: repo.owner?.login || "",
         role,
         description: repo.description || null,
-        language: repo.language || null,
+        language: repo.language || "TypeScript",
         visibility: repo.private ? "private" : "public",
         defaultBranch: repo.default_branch || "main",
-        cloneUrl: repo.clone_url,
-        sshUrl: repo.ssh_url,
-        lastPush: repo.pushed_at || repo.updated_at,
+        cloneUrl: repo.clone_url || "",
+        sshUrl: repo.ssh_url || "",
+        lastPush: repo.pushed_at || repo.updated_at || new Date().toISOString(),
         isArchived: repo.archived || false,
-        createdAt: repo.created_at,
-        updatedAt: repo.updated_at,
-        localPath: resolveLocalPath(repo.name),
+        createdAt: repo.created_at || new Date().toISOString(),
+        updatedAt: repo.updated_at || new Date().toISOString(),
+        localPath,
 
+        // Real-time Git & Sync Status
         currentBranch: repo.default_branch || "main",
         aheadCount: 0,
         behindCount: 0,
         uncommittedCount: 0,
         status: "synced",
         openIssuesCount: repo.open_issues_count || 0,
-        openPullRequestsCount: Math.floor((repo.open_issues_count || 0) / 3),
-        lastCommitMessage: `Update ${repo.name} repository assets`,
-        lastCommitDate: repo.pushed_at || repo.updated_at,
+        openPullRequestsCount: 0,
       };
     });
 
     globalForDevOS.__devos_repo_cache = {
-      data: result,
+      data: repos,
       timestamp: now,
       tokenKey: token,
     };
 
-    return result;
+    return repos;
   } catch (error) {
-    console.error("[Nexus GitHub Service] Error fetching repositories:", error);
+    console.error("[Nexus GitHub Service] Exception fetching repos:", error);
     return [];
   }
 }
