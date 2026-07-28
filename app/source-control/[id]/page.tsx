@@ -16,6 +16,7 @@ import {
   Folder,
   Shield,
   Trash2,
+  Edit3,
 } from "lucide-react";
 import { getGitHubOAuthToken, fetchGitHubUserRepositories } from "@/lib/services/github/repositories";
 import { fetchGitHubRepoCommits, fetchGitHubCommitDetails } from "@/lib/services/github/commits";
@@ -28,6 +29,7 @@ import GitQuickActionsBar from "@/components/devos/GitQuickActionsBar";
 import BranchControls from "@/components/devos/BranchControls";
 import RepositoryFilesExplorer from "@/components/devos/RepositoryFilesExplorer";
 import DeleteRepoModal from "@/components/devos/DeleteRepoModal";
+import RenameRepoModal from "@/components/devos/RenameRepoModal";
 
 interface RepositoryDashboardProps {
   params: Promise<{ id: string }>;
@@ -574,7 +576,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
               <Settings className="w-5 h-5 text-indigo-400" />
               Repository Settings & Danger Zone
             </h2>
-            <p className="text-xs text-zinc-400">Manage local path mappings, clone URLs, and remote Git actions.</p>
+            <p className="text-xs text-zinc-400">Manage repository name, local path mappings, clone URLs, and remote Git actions.</p>
           </div>
 
           <div className="space-y-6">
@@ -644,7 +646,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
             </div>
 
             {/* DANGER ZONE CARD */}
-            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6 space-y-4 shadow-xl">
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6 space-y-6 shadow-xl">
               <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
                 <div>
                   <h3 className="text-sm font-bold text-rose-300 uppercase tracking-wider flex items-center gap-2">
@@ -652,15 +654,31 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                     Danger Zone
                   </h3>
                   <p className="text-xs text-rose-400/80 mt-0.5">
-                    Permanently delete this repository on GitHub.com and optionally remove local PC files.
+                    Irreversible repository management actions with GitHub-style typed confirmation.
                   </p>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between pt-2">
+              {/* RENAME REPOSITORY ROW */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-rose-500/20 pb-4">
+                <div className="text-xs text-zinc-300">
+                  <span className="font-bold text-white block">Rename this repository</span>
+                  <span className="text-zinc-400 text-[11px]">Change the repository name on GitHub.com and update local folder mappings.</span>
+                </div>
+
+                <RenameRepoModal
+                  repoId={repo.id}
+                  repoName={repo.name}
+                  ownerLogin={owner}
+                  localPath={repo.localPath || `c:\\coding\\projects\\${repo.name}`}
+                />
+              </div>
+
+              {/* DELETE REPOSITORY ROW */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
                 <div className="text-xs text-zinc-300">
                   <span className="font-bold text-white block">Delete this repository</span>
-                  <span className="text-zinc-400 text-[11px]">Once deleted, it cannot be recovered.</span>
+                  <span className="text-zinc-400 text-[11px]">Permanently remove repository on GitHub.com and optionally local files.</span>
                 </div>
 
                 <DeleteRepoModal

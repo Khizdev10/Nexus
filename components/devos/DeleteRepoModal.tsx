@@ -2,13 +2,16 @@
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2, AlertTriangle, X, RefreshCw, CheckCircle2, ShieldAlert } from "lucide-react";
+import { Trash2, AlertTriangle, X, RefreshCw, ShieldAlert } from "lucide-react";
 
 interface DeleteRepoModalProps {
   repoId: string;
   repoName: string;
   ownerLogin: string;
   localPath: string;
+  isOpenControlled?: boolean;
+  onCloseControlled?: () => void;
+  triggerButton?: React.ReactNode;
 }
 
 export default function DeleteRepoModal({
@@ -16,13 +19,23 @@ export default function DeleteRepoModal({
   repoName,
   ownerLogin,
   localPath,
+  isOpenControlled,
+  onCloseControlled,
+  triggerButton,
 }: DeleteRepoModalProps) {
   const router = useRouter();
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
   const [typedName, setTypedName] = useState("");
   const [deleteLocalFolder, setDeleteLocalFolder] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isModalOpen = isOpenControlled !== undefined ? isOpenControlled : internalOpen;
+
+  const closeModal = () => {
+    if (onCloseControlled) onCloseControlled();
+    else setInternalOpen(false);
+  };
 
   const isConfirmed = typedName.trim() === repoName.trim();
 
@@ -46,7 +59,7 @@ export default function DeleteRepoModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to delete repository");
 
-      setIsOpen(false);
+      closeModal();
       router.push("/source-control");
       router.refresh();
     } catch (err: any) {
@@ -58,17 +71,21 @@ export default function DeleteRepoModal({
 
   return (
     <div>
-      {/* Danger Zone Trigger Button inside Settings Tab */}
-      <button
-        onClick={() => setIsOpen(true)}
-        className="rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 px-5 py-2.5 text-xs font-bold transition-all flex items-center gap-2 shadow-md shadow-rose-500/10"
-      >
-        <Trash2 className="w-4 h-4" />
-        <span>Delete Repository...</span>
-      </button>
+      {/* Optional Trigger Button */}
+      {triggerButton ? (
+        <div onClick={() => setInternalOpen(true)}>{triggerButton}</div>
+      ) : isOpenControlled === undefined ? (
+        <button
+          onClick={() => setInternalOpen(true)}
+          className="rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 px-5 py-2.5 text-xs font-bold transition-all flex items-center gap-2 shadow-md shadow-rose-500/10"
+        >
+          <Trash2 className="w-4 h-4" />
+          <span>Delete Repository...</span>
+        </button>
+      ) : null}
 
       {/* GitHub-Style Delete Confirmation Modal */}
-      {isOpen && (
+      {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn">
           <div className="w-full max-w-lg rounded-2xl border border-rose-500/40 bg-zinc-950 p-6 space-y-6 shadow-2xl">
             {/* Modal Header */}
@@ -82,7 +99,7 @@ export default function DeleteRepoModal({
                   <p className="text-xs font-mono text-rose-400 mt-0.5">Danger Zone • Irreversible Action</p>
                 </div>
               </div>
-              <button onClick={() => setIsOpen(false)} className="text-zinc-400 hover:text-white">
+              <button onClick={closeModal} className="text-zinc-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -135,7 +152,7 @@ export default function DeleteRepoModal({
             {/* Action Buttons */}
             <div className="flex items-center justify-between border-t border-zinc-800 pt-4">
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={closeModal}
                 className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-xs font-medium text-zinc-400 hover:text-white"
               >
                 Cancel
