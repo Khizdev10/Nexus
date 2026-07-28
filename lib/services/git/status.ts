@@ -3,14 +3,47 @@ import path from "path";
 import { execSync } from "child_process";
 import { DevOSGitStatus } from "@/types/devos";
 
-const localStatusCache = new Map<string, { status: DevOSGitStatus; timestamp: number }>();
+export interface ExtendedGitStatus extends DevOSGitStatus {
+  lastCommitDate?: string;
+}
+
+const localStatusCache = new Map<string, { status: ExtendedGitStatus; timestamp: number }>();
 const CACHE_TTL_MS = 5 * 1000; // 5 seconds in-memory cache
-/*
- * Ultra-fast single-command local Git status inspection service (<30ms per repo)
- * Combines branch, ahead/behind, and working tree state into 1 single 'git status -b --porcelain' call.
+
+/**
+ * Invalidate the local git status cache for a specific repo path, or all repos.
+ * Called after successful git actions (commit, push, pull, fetch) to ensure
+ * the next status check returns fresh data.
  */
-export function getLocalGitStatus(localPath: string): DevOSGitStatus {
-  const result: DevOSGitStatus = {
+export function clearStatusCache(localPath?: string): void {
+  if (localPath) {
+    localStatusCache.delete(localPath);
+  } else {
+    localStatusCache.clear();
+  }
+}
+
+/**
+ * High-speed local Git status inspection service (<30ms per repo)
+ * Combines branch, ahead/behind, working tree state, and last commit timestamp
+ * into a single fast `git status -b --porcelain` call plus a `git log` call.
+ *
+ * Porcelain format reference (two-column XY codes):
+ *   Column 1 (X) = staging area status
+ *   Column 2 (Y) = working tree status
+ *   XY  Meaning
+ *   M   staged modified      (X=M, Y= )
+ *    M  unstaged modified    (X= , Y=M)
+ *   MM  staged + unstaged    (X=M, Y=M)
+ *   A   staged new file      (X=A, Y= )
+ *   AM  staged new + edited  (X=A, Y=M)
+ *   D   staged deletion      (X=D, Y= )
+ *    D  unstaged deletion    (X= , Y=D)
+ *   R   renamed              (X=R, Y= )
+ *   ??  untracked
+ */
+export function getLocalGitStatus(localPath: string): ExtendedGitStatus {
+  const result: ExtendedGitStatus = {
     branch: "main",
     ahead: 0,
     behind: 0,
@@ -30,14 +63,13 @@ export function getLocalGitStatus(localPath: string): DevOSGitStatus {
     return result;
   }
 
-  // 1. Check 5-second in-memory cache (0ms response)
+  // Check 5-second in-memory cache
   const now = Date.now();
   const cached = localStatusCache.get(localPath);
   if (cached && now - cached.timestamp < CACHE_TTL_MS) {
     return cached.status;
   }
 
-  // 2. Single unified command: git status -b --porcelain (~30ms total)
   try {
     const rawOutput = execSync("git status -b --porcelain", {
       cwd: localPath,
@@ -48,7 +80,7 @@ export function getLocalGitStatus(localPath: string): DevOSGitStatus {
     if (rawOutput) {
       const lines = rawOutput.split("\n");
 
-      // Line 1 contains branch and ahead/behind info e.g. ## main...origin/main [ahead 1, behind 2]
+      // Line 1: branch header — e.g. ## main...origin/main [ahead 1, behind 2]
       const header = lines[0] || "";
       if (header.startsWith("##")) {
         const branchMatch = header.match(/##\s+([^.\s]+)/);
@@ -67,28 +99,62 @@ export function getLocalGitStatus(localPath: string): DevOSGitStatus {
         }
       }
 
-      // Remaining lines contain modified/staged/untracked files
+      // Remaining lines: two-column XY status codes
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
-        if (!line) continue;
+        if (!line || line.length < 4) continue;
         result.isClean = false;
 
-        const symbol = line.substring(0, 2).trim();
+        const x = line[0]; // staging area
+        const y = line[1]; // working tree
         const file = line.substring(3).trim();
 
-        if (symbol === "M") result.modifiedFiles.push(file);
-        else if (symbol === "A") result.stagedFiles.push(file);
-        else if (symbol === "D") result.deletedFiles.push(file);
-        else if (symbol === "??" || symbol === "U") result.untrackedFiles.push(file);
+        // Untracked files
+        if (x === "?" && y === "?") {
+          result.untrackedFiles.push(file);
+          continue;
+        }
+
+        // Staging area changes (column 1)
+        if (x === "A" || x === "R") {
+          result.stagedFiles.push(file);
+        } else if (x === "M") {
+          result.stagedFiles.push(file);
+        } else if (x === "D") {
+          result.deletedFiles.push(file);
+        }
+
+        // Working tree changes (column 2) — unstaged edits on top of staged state
+        if (y === "M") {
+          result.modifiedFiles.push(file);
+        } else if (y === "D") {
+          result.deletedFiles.push(file);
+        }
       }
     }
 
-    localStatusCache.set(localPath, { status: result, timestamp: now });
-  } catch (err) {
-    // Basic fallback if combined command fails
+    // Get last commit date (<10ms) to compare with GitHub API lastPush
     try {
-      result.branch = execSync("git branch --show-current", { cwd: localPath, encoding: "utf-8", timeout: 800 }).trim() || "main";
-    } catch { }
+      const lastCommitIso = execSync("git log -1 --format=%cd --date=iso-strict", {
+        cwd: localPath,
+        encoding: "utf-8",
+        timeout: 800,
+      }).trim().replace(/"/g, ""); // Strip any surrounding quotes from Windows shell
+      if (lastCommitIso) {
+        result.lastCommitDate = lastCommitIso;
+      }
+    } catch { /* empty repo or no commits */ }
+
+    localStatusCache.set(localPath, { status: result, timestamp: now });
+  } catch {
+    // Fallback: try to at least get the branch name
+    try {
+      result.branch = execSync("git branch --show-current", {
+        cwd: localPath,
+        encoding: "utf-8",
+        timeout: 800,
+      }).trim() || "main";
+    } catch { /* ignore */ }
   }
 
   return result;

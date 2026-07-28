@@ -52,7 +52,7 @@ if (!globalForGitHub.__github_commits_cache) {
   globalForGitHub.__github_commits_cache = new Map();
 }
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds TTL — short enough to detect GitHub web edits
 
 export async function getUserGitHubToken(): Promise<string | null> {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
@@ -86,7 +86,7 @@ export async function getUserGitHubToken(): Promise<string | null> {
   }
 }
 
-export async function getUserRepositories(token: string, limit = 20): Promise<GitHubRepo[]> {
+export async function getUserRepositories(token: string, limit = 10): Promise<GitHubRepo[]> {
   const now = Date.now();
   if (
     globalForGitHub.__github_user_repos_cache &&
@@ -103,7 +103,7 @@ export async function getUserRepositories(token: string, limit = 20): Promise<Gi
         Accept: "application/vnd.github.v3+json",
         "User-Agent": "Nexus-App",
       },
-      next: { revalidate: 300 },
+      cache: "no-store",
     });
 
     if (!res.ok) {
@@ -148,7 +148,7 @@ export async function getRepoCommits(
           Accept: "application/vnd.github.v3+json",
           "User-Agent": "Nexus-App",
         },
-        next: { revalidate: 300 },
+        cache: "no-store",
       }
     );
 

@@ -1,5 +1,7 @@
 import { execSync } from "child_process";
 import fs from "fs";
+import { clearStatusCache } from "./status";
+import { clearRepoCache } from "../github/repositories";
 
 export interface GitActionResult {
   success: boolean;
@@ -22,7 +24,9 @@ function parseGitHubRepoPath(remoteUrl: string): string | null {
 }
 
 /**
- * Executes local Git operations: commit, push, pull, fetch with GitHub OAuth / PAT support
+ * Executes local Git operations: commit, push, pull, fetch with GitHub OAuth / PAT support.
+ * Clears local status & repo caches and updates local remote tracking refs to guarantee
+ * immediate SYNCED state in the UI.
  */
 export function executeGitAction(
   localPath: string,
@@ -39,11 +43,25 @@ export function executeGitAction(
   try {
     switch (action) {
       case "fetch": {
-        const out = execSync("git fetch --all", {
+        let fetchCmd = "git fetch --all";
+
+        // Use PAT-authenticated fetch if token is available
+        if (activeToken) {
+          try {
+            const remoteUrl = execSync("git remote get-url origin", { cwd: localPath, encoding: "utf-8" }).trim();
+            const repoPath = parseGitHubRepoPath(remoteUrl);
+            if (repoPath) {
+              fetchCmd = `git -c credential.helper= fetch https://${activeToken}@github.com/${repoPath}.git`;
+            }
+          } catch { /* fall back to unauthenticated fetch */ }
+        }
+
+        const out = execSync(fetchCmd, {
           cwd: localPath,
           encoding: "utf-8",
           timeout: 10000,
         });
+        clearStatusCache(localPath);
         return { success: true, message: "Fetched latest changes from GitHub origin.", output: out };
       }
 
@@ -66,6 +84,8 @@ export function executeGitAction(
             encoding: "utf-8",
             timeout: 20000,
           });
+          clearStatusCache(localPath);
+          clearRepoCache();
           return { success: true, message: "Pulled latest changes from GitHub successfully.", output: out };
         } catch (pullErr: any) {
           const errMsg = pullErr?.stderr || pullErr?.stdout || pullErr?.message || "";
@@ -86,6 +106,7 @@ export function executeGitAction(
           cwd: localPath,
           encoding: "utf-8",
         });
+        clearStatusCache(localPath);
         return { success: true, message: "Committed changes to local repository.", output: out };
       }
 
@@ -117,6 +138,14 @@ export function executeGitAction(
                 encoding: "utf-8",
                 timeout: 30000,
               });
+
+              // CRITICAL FIX: Update local tracking ref so git status reflects 0 ahead immediately
+              try {
+                execSync(`git update-ref refs/remotes/origin/${branch} HEAD`, { cwd: localPath, encoding: "utf-8" });
+              } catch {}
+
+              clearStatusCache(localPath);
+              clearRepoCache();
               return {
                 success: true,
                 message: `Successfully pushed commits to GitHub on branch '${branch}' via authenticated token.`,
@@ -146,6 +175,13 @@ export function executeGitAction(
             encoding: "utf-8",
             timeout: 30000,
           });
+
+          try {
+            execSync(`git update-ref refs/remotes/origin/${branch} HEAD`, { cwd: localPath, encoding: "utf-8" });
+          } catch {}
+
+          clearStatusCache(localPath);
+          clearRepoCache();
           return {
             success: true,
             message: `Successfully pushed commits to GitHub on branch '${branch}' via system credentials.`,

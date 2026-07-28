@@ -18,7 +18,7 @@ export async function fetchGitHubRepoCommits(
           Accept: "application/vnd.github.v3+json",
           "User-Agent": "DevOS-App",
         },
-        next: { revalidate: 60 },
+        cache: "no-store",
       }
     );
 
@@ -61,7 +61,7 @@ export async function fetchGitHubCommitDetails(
           Accept: "application/vnd.github.v3+json",
           "User-Agent": "DevOS-App",
         },
-        next: { revalidate: 60 },
+        cache: "no-store",
       }
     );
 

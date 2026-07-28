@@ -37,6 +37,7 @@ export default async function SourceControlHomePage() {
         localStatus.stagedFiles.length +
         localStatus.untrackedFiles.length;
 
+      // Authoritative status evaluation strictly based on local Git working tree state
       if (repo.uncommittedCount > 0) {
         repo.status = "modified";
         modifiedRepos++;
@@ -56,7 +57,7 @@ export default async function SourceControlHomePage() {
 
   const stats: DevOSOverallStats = {
     totalRepos: repos.length,
-    syncedRepos: repos.length,
+    syncedRepos: repos.length - modifiedRepos - aheadRepos - behindRepos,
     modifiedRepos,
     aheadRepos,
     behindRepos,

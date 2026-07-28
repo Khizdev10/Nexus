@@ -1,5 +1,18 @@
 import Link from "next/link";
 import Image from "next/image";
+import {
+  BarChart3,
+  History,
+  GitBranch,
+  CircleDot,
+  GitPullRequest,
+  Settings,
+  Bot,
+  ExternalLink,
+  X,
+  FileCode,
+  Sparkles,
+} from "lucide-react";
 import { getGitHubOAuthToken, fetchGitHubUserRepositories } from "@/lib/services/github/repositories";
 import { fetchGitHubRepoCommits, fetchGitHubCommitDetails } from "@/lib/services/github/commits";
 import { getLocalGitStatus } from "@/lib/services/git/status";
@@ -73,9 +86,10 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
             href={repo.cloneUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
+            className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors flex items-center gap-2"
           >
-            Open in GitHub ↗
+            <span>Open in GitHub</span>
+            <ExternalLink className="w-4 h-4 text-zinc-400" />
           </a>
         </div>
       </div>
@@ -83,12 +97,12 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
       {/* Sub-Navigation Tabs */}
       <div className="flex items-center gap-2 border-b border-zinc-800 pb-3 overflow-x-auto">
         {[
-          { key: "overview", label: "Overview", icon: "📊" },
-          { key: "commits", label: "Commits", icon: "📜" },
-          { key: "branches", label: "Branches", icon: "🌿" },
-          { key: "issues", label: `Issues (${repo.openIssuesCount})`, icon: "🎯" },
-          { key: "pull-requests", label: `Pull Requests (${repo.openPullRequestsCount})`, icon: "🔀" },
-          { key: "settings", label: "Settings", icon: "⚙️" },
+          { key: "overview", label: "Overview", icon: <BarChart3 className="w-4 h-4" /> },
+          { key: "commits", label: "Commits", icon: <History className="w-4 h-4" /> },
+          { key: "branches", label: "Branches", icon: <GitBranch className="w-4 h-4" /> },
+          { key: "issues", label: `Issues (${repo.openIssuesCount})`, icon: <CircleDot className="w-4 h-4" /> },
+          { key: "pull-requests", label: `Pull Requests (${repo.openPullRequestsCount})`, icon: <GitPullRequest className="w-4 h-4" /> },
+          { key: "settings", label: "Settings", icon: <Settings className="w-4 h-4" /> },
         ].map((tab) => {
           const isActive = activeTab === tab.key;
           return (
@@ -101,7 +115,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                   : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               }`}
             >
-              <span>{tab.icon}</span>
+              {tab.icon}
               {tab.label}
             </Link>
           );
@@ -113,7 +127,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
         <div className="space-y-8">
           {/* Functional Git Quick Actions Bar */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4 shadow-xl">
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider text-zinc-400">
+            <h2 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
               Git Quick Actions
             </h2>
 
@@ -278,15 +292,19 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                     href={`/source-control/${repo.id}?tab=commits`}
                     className="rounded-lg p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
                   >
-                    ✕
+                    <X className="w-5 h-5" />
                   </Link>
                 </div>
 
                 <div className="p-6 space-y-6 overflow-y-auto">
-                  {/* AI Summary Placeholder */}
+                  {/* AI Summary */}
                   {commitDetail.aiSummary && (
-                    <div className="p-4 rounded-xl border border-purple-500/30 bg-purple-500/10 text-xs text-purple-200">
-                      🤖 <strong className="text-purple-300">AI Summary:</strong> {commitDetail.aiSummary}
+                    <div className="p-4 rounded-xl border border-purple-500/30 bg-purple-500/10 text-xs text-purple-200 flex items-start gap-3">
+                      <Sparkles className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-purple-300 font-bold block mb-1">AI Code Analysis</strong>
+                        {commitDetail.aiSummary}
+                      </div>
                     </div>
                   )}
 
@@ -308,7 +326,10 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                       {commitDetail.files?.map((file, idx) => (
                         <div key={idx} className="p-3.5 rounded-xl border border-zinc-800 bg-zinc-900/80 font-mono text-xs space-y-2">
                           <div className="flex items-center justify-between">
-                            <span className="text-zinc-200">{file.filename}</span>
+                            <span className="text-zinc-200 flex items-center gap-2">
+                              <FileCode className="w-4 h-4 text-indigo-400" />
+                              {file.filename}
+                            </span>
                             <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-zinc-800 text-zinc-400 border border-zinc-700">
                               {file.status}
                             </span>
@@ -327,7 +348,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                 <div className="px-6 py-3 border-t border-zinc-800 bg-zinc-900/60 text-right">
                   <Link
                     href={`/source-control/${repo.id}?tab=commits`}
-                    className="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2 text-xs font-bold text-white transition-colors"
+                    className="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2 text-xs font-bold text-white transition-colors inline-block"
                   >
                     Close Details
                   </Link>

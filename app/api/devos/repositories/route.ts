@@ -57,7 +57,7 @@ export async function GET() {
 
     const stats: DevOSOverallStats = {
       totalRepos: repositories.length,
-      syncedRepos: repositories.length,
+      syncedRepos: repositories.length - modifiedRepos - aheadRepos - behindRepos,
       modifiedRepos,
       aheadRepos,
       behindRepos,

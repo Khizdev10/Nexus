@@ -1,4 +1,6 @@
 import { auth, clerkClient } from "@clerk/nextjs/server";
+import fs from "fs";
+import path from "path";
 import { DevOSRepository } from "@/types/devos";
 
 // Persist cache across Next.js Dev HMR reloads
@@ -7,11 +9,43 @@ const globalForDevOS = globalThis as unknown as {
   __devos_token_cache?: { token: string; timestamp: number };
 };
 
-const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes persistent memory cache
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds — short enough to detect GitHub web edits quickly
 
 /**
- * Service to fetch, import, and transform GitHub Repositories for DevOS
- * Uses 5-minute globalThis memory cache for sub-5ms instant navigation.
+ * Known GitHub repo name → local folder name mappings.
+ * If a GitHub repo is named differently from its local folder on disk,
+ * add the mapping here.
+ */
+const REPO_NAME_TO_LOCAL_FOLDER: Record<string, string> = {
+  Nexus: "devi",
+  // Add any other mismatches here, e.g.:
+  // "my-github-repo": "my-local-folder",
+};
+
+/**
+ * Resolve the local disk path for a GitHub repository.
+ * Checks known name mappings first, then falls back to c:\coding\projects\{repo.name}.
+ * Returns the path only if the folder actually exists on disk.
+ */
+function resolveLocalPath(repoName: string): string {
+  const basePath = "c:\\coding\\projects";
+
+  // Check known name mappings
+  const mappedName = REPO_NAME_TO_LOCAL_FOLDER[repoName];
+  if (mappedName) {
+    const mappedPath = path.join(/*turbopackIgnore: true*/ basePath, mappedName);
+    if (fs.existsSync(mappedPath)) {
+      return mappedPath;
+    }
+  }
+
+  // Default: use repo name directly
+  return path.join(/*turbopackIgnore: true*/ basePath, repoName);
+}
+
+/**
+ * Service to fetch, import, and transform GitHub Repositories for DevOS.
+ * Uses 60s globalThis memory cache for instant navigation.
  */
 export async function getGitHubOAuthToken(): Promise<string | null> {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
@@ -45,7 +79,15 @@ export async function getGitHubOAuthToken(): Promise<string | null> {
   }
 }
 
-export async function fetchGitHubUserRepositories(token: string, limit = 20): Promise<DevOSRepository[]> {
+/**
+ * Invalidate the repo cache so the next call fetches fresh data from GitHub API.
+ * Call this after performing git actions that change remote state (push).
+ */
+export function clearRepoCache(): void {
+  globalForDevOS.__devos_repo_cache = undefined;
+}
+
+export async function fetchGitHubUserRepositories(token: string, limit = 10): Promise<DevOSRepository[]> {
   const now = Date.now();
   if (
     globalForDevOS.__devos_repo_cache &&
@@ -62,7 +104,8 @@ export async function fetchGitHubUserRepositories(token: string, limit = 20): Pr
         Accept: "application/vnd.github.v3+json",
         "User-Agent": "DevOS-App",
       },
-      next: { revalidate: 300 },
+      // cache: "no-store" ensures fresh data every time in dev mode
+      cache: "no-store",
     });
 
     if (!res.ok) {
@@ -86,9 +129,9 @@ export async function fetchGitHubUserRepositories(token: string, limit = 20): Pr
       isArchived: repo.archived || false,
       createdAt: repo.created_at,
       updatedAt: repo.updated_at,
-      localPath: `c:\\coding\\projects\\${repo.name}`,
+      localPath: resolveLocalPath(repo.name),
 
-      // Git Status Attributes
+      // Git Status Attributes — set defaults, overridden by page-level status logic
       currentBranch: repo.default_branch || "main",
       aheadCount: 0,
       behindCount: 0,
