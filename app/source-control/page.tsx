@@ -1,5 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
+import fs from "fs";
+import path from "path";
 import { currentUser } from "@clerk/nextjs/server";
 import { SignInButton, Show } from "@clerk/nextjs";
 import { getGitHubOAuthToken, fetchGitHubUserRepositories } from "@/lib/services/github/repositories";
@@ -7,8 +9,11 @@ import { getLocalGitStatus } from "@/lib/services/git/status";
 import { DevOSOverallStats, DevOSRepository } from "@/types/devos";
 
 export default async function SourceControlHomePage() {
-  const user = await currentUser();
-  const token = await getGitHubOAuthToken();
+  // Parallelize authentication calls to eliminate waterfall delays
+  const [user, token] = await Promise.all([
+    currentUser(),
+    getGitHubOAuthToken(),
+  ]);
 
   const repos: DevOSRepository[] = token ? await fetchGitHubUserRepositories(token) : [];
 
@@ -22,7 +27,7 @@ export default async function SourceControlHomePage() {
     totalIssues += repo.openIssuesCount;
     totalPRs += repo.openPullRequestsCount;
 
-    if (repo.localPath) {
+    if (repo.localPath && fs.existsSync(repo.localPath) && fs.existsSync(path.join(repo.localPath, ".git"))) {
       const localStatus = getLocalGitStatus(repo.localPath);
       repo.currentBranch = localStatus.branch;
       repo.aheadCount = localStatus.ahead;
@@ -44,6 +49,8 @@ export default async function SourceControlHomePage() {
       } else {
         repo.status = "synced";
       }
+    } else {
+      repo.status = "synced";
     }
   });
 
@@ -72,7 +79,7 @@ export default async function SourceControlHomePage() {
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto w-full p-6 text-zinc-100">
+    <div className="space-y-8 max-w-7xl mx-auto w-full p-6 text-zinc-100 animate-fadeIn">
       {/* Top Banner & Title */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div>
@@ -91,6 +98,7 @@ export default async function SourceControlHomePage() {
         <div className="flex items-center gap-3">
           <Link
             href="/dashboard/git-engine"
+            prefetch={true}
             className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
           >
             Git Engine Watcher
@@ -251,6 +259,7 @@ export default async function SourceControlHomePage() {
                 <div className="pt-2">
                   <Link
                     href={`/source-control/${repo.id}`}
+                    prefetch={true}
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 py-2.5 text-xs font-bold text-white transition-all shadow-md shadow-indigo-500/20"
                   >
                     Open Repository Dashboard →

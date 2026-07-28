@@ -40,7 +40,11 @@ export default function RootLayout({
           <header className="sticky top-0 z-50 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-md">
             <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
               <div className="flex items-center gap-8">
-                <Link href="/" className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white hover:opacity-90">
+                <Link
+                  href="/"
+                  prefetch={true}
+                  className="flex items-center gap-2.5 text-xl font-bold tracking-tight text-white hover:opacity-90 transition-opacity"
+                >
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-tr from-indigo-600 to-purple-500 font-extrabold text-white text-xs shadow-md shadow-indigo-500/20">
                     OS
                   </span>
@@ -52,6 +56,7 @@ export default function RootLayout({
                 <nav className="flex items-center gap-2">
                   <Link
                     href="/source-control"
+                    prefetch={true}
                     className="inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-sm font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-all border border-transparent hover:border-zinc-700/50"
                   >
                     <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -62,6 +67,7 @@ export default function RootLayout({
 
                   <Link
                     href="/dashboard/git-engine"
+                    prefetch={true}
                     className="inline-flex items-center gap-2 rounded-xl px-3.5 py-1.5 text-sm font-semibold text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-all border border-transparent hover:border-zinc-700/50"
                   >
                     <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">

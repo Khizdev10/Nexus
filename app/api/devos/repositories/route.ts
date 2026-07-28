@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import fs from "fs";
+import path from "path";
 import { getGitHubOAuthToken, fetchGitHubUserRepositories } from "@/lib/services/github/repositories";
 import { getLocalGitStatus } from "@/lib/services/git/status";
 import { DevOSOverallStats } from "@/types/devos";
@@ -15,7 +17,7 @@ export async function GET() {
 
     const repositories = await fetchGitHubUserRepositories(token);
 
-    // Enhance repositories with real local git status if folder exists
+    // Enhance repositories with real local git status ONLY if local folder & .git exist
     let modifiedRepos = 0;
     let aheadRepos = 0;
     let behindRepos = 0;
@@ -26,7 +28,7 @@ export async function GET() {
       totalIssues += repo.openIssuesCount;
       totalPRs += repo.openPullRequestsCount;
 
-      if (repo.localPath) {
+      if (repo.localPath && fs.existsSync(repo.localPath) && fs.existsSync(path.join(repo.localPath, ".git"))) {
         const localStatus = getLocalGitStatus(repo.localPath);
         repo.currentBranch = localStatus.branch;
         repo.aheadCount = localStatus.ahead;
@@ -48,6 +50,8 @@ export async function GET() {
         } else {
           repo.status = "synced";
         }
+      } else {
+        repo.status = "synced";
       }
     });
 

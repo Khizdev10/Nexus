@@ -22,7 +22,7 @@ function parseGitHubRepoPath(remoteUrl: string): string | null {
 }
 
 /**
- * Executes local Git operations: commit, push, pull, fetch with GitHub OAuth / Local SSH support
+ * Executes local Git operations: commit, push, pull, fetch with GitHub OAuth / PAT support
  */
 export function executeGitAction(
   localPath: string,
@@ -33,6 +33,8 @@ export function executeGitAction(
   if (!localPath || !fs.existsSync(localPath)) {
     return { success: false, message: `Local directory not found: ${localPath}` };
   }
+
+  const activeToken = process.env.GITHUB_PAT || process.env.GITHUB_TOKEN || token;
 
   try {
     switch (action) {
@@ -46,14 +48,14 @@ export function executeGitAction(
       }
 
       case "pull": {
-        let pullCmd = "git pull";
-        if (token) {
+        let pullCmd = "git pull --no-rebase";
+        if (activeToken) {
           try {
             const branch = execSync("git branch --show-current", { cwd: localPath, encoding: "utf-8" }).trim() || "main";
             const remoteUrl = execSync("git remote get-url origin", { cwd: localPath, encoding: "utf-8" }).trim();
             const repoPath = parseGitHubRepoPath(remoteUrl);
             if (repoPath) {
-              pullCmd = `git pull https://x-access-token:${token}@github.com/${repoPath}.git ${branch}`;
+              pullCmd = `git -c credential.helper= pull https://${activeToken}@github.com/${repoPath}.git ${branch} --no-rebase`;
             }
           } catch {}
         }
@@ -62,16 +64,16 @@ export function executeGitAction(
           const out = execSync(pullCmd, {
             cwd: localPath,
             encoding: "utf-8",
-            timeout: 15000,
+            timeout: 20000,
           });
           return { success: true, message: "Pulled latest changes from GitHub successfully.", output: out };
-        } catch {
-          const out = execSync("git pull", {
-            cwd: localPath,
-            encoding: "utf-8",
-            timeout: 15000,
-          });
-          return { success: true, message: "Pulled latest changes via local git origin.", output: out };
+        } catch (pullErr: any) {
+          const errMsg = pullErr?.stderr || pullErr?.stdout || pullErr?.message || "";
+          return {
+            success: false,
+            message: `Git pull error: ${errMsg}`,
+            output: errMsg,
+          };
         }
       }
 
@@ -103,55 +105,60 @@ export function executeGitAction(
           }
         } catch {}
 
-        // Attempt 1: Standard local git push (uses local SSH keys / Git Credential Manager)
+        // Authenticated Push using Token
+        if (activeToken) {
+          try {
+            const remoteUrl = execSync("git remote get-url origin", { cwd: localPath, encoding: "utf-8" }).trim();
+            const repoPath = parseGitHubRepoPath(remoteUrl);
+            if (repoPath) {
+              const tokenPushCmd = `git -c credential.helper= push https://${activeToken}@github.com/${repoPath}.git ${branch}`;
+              const out = execSync(tokenPushCmd, {
+                cwd: localPath,
+                encoding: "utf-8",
+                timeout: 30000,
+              });
+              return {
+                success: true,
+                message: `Successfully pushed commits to GitHub on branch '${branch}' via authenticated token.`,
+                output: out,
+              };
+            }
+          } catch (tokenPushErr: any) {
+            const errStr = tokenPushErr?.stderr || tokenPushErr?.stdout || tokenPushErr?.message || "";
+            if (errStr.includes("non-fast-forward") || errStr.includes("behind") || errStr.includes("rejected")) {
+              throw new Error(
+                "Push Rejected (Behind Remote): Remote GitHub repository has new commits that are not on your PC yet (e.g. files created on GitHub). Please click 'Pull' first to download remote changes!"
+              );
+            }
+            if (errStr.includes("403") || errStr.includes("Permission")) {
+              throw new Error(
+                "GitHub Permission Denied (403): Your Personal Access Token lacks 'repo' write permissions."
+              );
+            }
+            throw new Error(`Git push failed: ${errStr}`);
+          }
+        }
+
+        // Local System Push fallback
         try {
-          const out = execSync(`git push origin ${branch}`, {
+          const out = execSync(`git push -u origin ${branch}`, {
             cwd: localPath,
             encoding: "utf-8",
             timeout: 30000,
           });
           return {
             success: true,
-            message: `Successfully pushed commits to GitHub on branch '${branch}' via local Git credentials.`,
+            message: `Successfully pushed commits to GitHub on branch '${branch}' via system credentials.`,
             output: out,
           };
-        } catch (localPushErr: any) {
-          // Attempt 2: Token-authenticated HTTPS push
-          if (token) {
-            try {
-              const remoteUrl = execSync("git remote get-url origin", { cwd: localPath, encoding: "utf-8" }).trim();
-              const repoPath = parseGitHubRepoPath(remoteUrl);
-              if (repoPath) {
-                const tokenPushCmd = `git push https://x-access-token:${token}@github.com/${repoPath}.git ${branch}`;
-                const out = execSync(tokenPushCmd, {
-                  cwd: localPath,
-                  encoding: "utf-8",
-                  timeout: 30000,
-                });
-                return {
-                  success: true,
-                  message: `Successfully pushed commits to GitHub on branch '${branch}' via OAuth token.`,
-                  output: out,
-                };
-              }
-            } catch (tokenPushErr: any) {
-              const errStr = tokenPushErr?.message || "";
-              if (errStr.includes("403")) {
-                throw new Error(
-                  "GitHub Permission Denied (403): Your OAuth token or local Git credentials lack write access to this repository. Ensure your GitHub Personal Access Token or SSH key has 'repo' write permissions."
-                );
-              }
-              throw tokenPushErr;
-            }
-          }
-
-          const localErrMsg = localPushErr?.stderr || localPushErr?.message || "";
-          if (localErrMsg.includes("403")) {
+        } catch (systemPushErr: any) {
+          const errMsg = systemPushErr?.stderr || systemPushErr?.message || "";
+          if (errMsg.includes("non-fast-forward") || errMsg.includes("behind")) {
             throw new Error(
-              "GitHub Permission Denied (403): Your local Git credentials or SSH key lack write access to 'Khizdev10/life-sync.git'. Please check repository permissions on GitHub or run 'git push' in your terminal to authenticate."
+              "Push Rejected (Behind Remote): Remote GitHub repository has new commits that are not on your PC yet. Please click 'Pull' first to download remote changes!"
             );
           }
-          throw localPushErr;
+          throw systemPushErr;
         }
       }
 

@@ -18,6 +18,7 @@ export default function DashboardLayout({
           <nav className="space-y-1">
             <Link
               href="/dashboard"
+              prefetch={true}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800/60 transition-colors"
             >
               <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -28,6 +29,7 @@ export default function DashboardLayout({
 
             <Link
               href="/dashboard/git-engine"
+              prefetch={true}
               className="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-semibold text-white bg-indigo-600/10 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-600/20 transition-colors shadow-sm"
             >
               <div className="flex items-center gap-3">
@@ -43,6 +45,7 @@ export default function DashboardLayout({
 
             <Link
               href="/dashboard/analytics"
+              prefetch={true}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors opacity-70"
             >
               <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -53,6 +56,7 @@ export default function DashboardLayout({
 
             <Link
               href="/dashboard/settings"
+              prefetch={true}
               className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800/60 transition-colors opacity-70"
             >
               <svg className="w-5 h-5 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
