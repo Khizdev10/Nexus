@@ -9,12 +9,10 @@ import { DevOSOverallStats, DevOSRepository } from "@/types/devos";
 import RepositoryFilterGrid from "@/components/devos/RepositoryFilterGrid";
 
 export default async function SourceControlHomePage() {
-  // Use ultra-fast auth() check instead of blocking currentUser() HTTP network call
   const { userId } = await auth();
   const token = await getGitHubOAuthToken();
 
-  // Fetch repositories (serves instantly from memory cache if available)
-  const repos: DevOSRepository[] = token ? await fetchGitHubUserRepositories(token, 20) : [];
+  const repos: DevOSRepository[] = token ? await fetchGitHubUserRepositories(token, 30) : [];
 
   let modifiedRepos = 0;
   let aheadRepos = 0;
@@ -74,7 +72,7 @@ export default async function SourceControlHomePage() {
         <div>
           <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold text-indigo-400 mb-2">
             <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse"></span>
-            DevOS Source Control Module • Phase 1
+            Nexus Source Control Engine • Phase 1
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight text-white">
             Source Control
@@ -100,7 +98,7 @@ export default async function SourceControlHomePage() {
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 shadow-xl">
           <div className="flex items-center gap-4">
             <div className="w-12 h-12 rounded-full bg-indigo-600/30 border border-indigo-500/40 flex items-center justify-center font-mono font-bold text-indigo-300 text-lg">
-              Git
+              NX
             </div>
             <div>
               <div className="flex items-center gap-2">
@@ -125,7 +123,7 @@ export default async function SourceControlHomePage() {
           <div>
             <h3 className="font-bold text-amber-200 text-lg">GitHub Account Not Connected</h3>
             <p className="text-sm text-amber-300/80">
-              Sign in via GitHub to automatically import your repositories and enable DevOS Source Control.
+              Sign in via GitHub to automatically import your repositories and enable Nexus Source Control.
             </p>
           </div>
           <Show when="signed-out">

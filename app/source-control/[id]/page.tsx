@@ -66,7 +66,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
   if (!repo) {
     return (
       <div className="max-w-4xl mx-auto py-16 text-center text-zinc-500 font-mono">
-        Repository not found. <Link href="/source-control" className="text-indigo-400 underline">Return to Source Control</Link>
+        Repository not found. <Link href="/source-control" prefetch={true} className="text-indigo-400 underline">Return to Source Control</Link>
       </div>
     );
   }
@@ -82,7 +82,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800 pb-6">
         <div>
           <div className="flex items-center gap-2 text-xs font-mono text-zinc-400 mb-1">
-            <Link href="/source-control" className="hover:text-white transition-colors">Source Control</Link>
+            <Link href="/source-control" prefetch={true} className="hover:text-white transition-colors">Source Control</Link>
             <span>/</span>
             <span className="text-indigo-400 font-semibold">{repo.name}</span>
           </div>
@@ -119,7 +119,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
         </div>
       </div>
 
-      {/* Sub-Navigation Tabs */}
+      {/* Sub-Navigation Tabs with Ultra-Fast Prefetching */}
       <div className="flex items-center gap-2 border-b border-zinc-800 pb-3 overflow-x-auto">
         {[
           { key: "overview", label: "Overview", icon: <BarChart3 className="w-4 h-4" /> },
@@ -135,6 +135,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
             <Link
               key={tab.key}
               href={`/source-control/${repo.id}?tab=${tab.key}`}
+              prefetch={true}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold transition-all shrink-0 ${
                 isActive
                   ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
@@ -275,6 +276,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
               <Link
                 key={c.sha}
                 href={`/source-control/${repo.id}?tab=commits&sha=${c.sha}`}
+                prefetch={true}
                 className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-xl border transition-all gap-3 ${
                   selectedSha === c.sha
                     ? "border-indigo-500 bg-indigo-950/20 shadow-lg shadow-indigo-500/10"
@@ -326,6 +328,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                   </div>
                   <Link
                     href={`/source-control/${repo.id}?tab=commits`}
+                    prefetch={true}
                     className="rounded-lg p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
                   >
                     <X className="w-5 h-5" />
@@ -384,6 +387,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                 <div className="px-6 py-3 border-t border-zinc-800 bg-zinc-900/60 text-right">
                   <Link
                     href={`/source-control/${repo.id}?tab=commits`}
+                    prefetch={true}
                     className="rounded-xl bg-zinc-800 hover:bg-zinc-700 px-4 py-2 text-xs font-bold text-white transition-colors inline-block"
                   >
                     Close Details

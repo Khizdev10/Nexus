@@ -22,22 +22,17 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
   const collaboratorCount = useMemo(() => initialRepos.filter((r) => r.role === "collaborator").length, [initialRepos]);
   const teamCount = useMemo(() => initialRepos.filter((r) => r.role === "organization_member").length, [initialRepos]);
 
-  // Filter Repositories based on Role, Status, and Search Query
-  const filteredRepos = useMemo(() => {
+  // Step 1: Repositories filtered by Role + Search Query (used to recalculate statistical cards dynamically)
+  const roleAndSearchFilteredRepos = useMemo(() => {
     return initialRepos.filter((repo) => {
-      // 1. Filter by Role
+      // 1. Role Filter
       if (activeRoleFilter !== "all") {
         if (activeRoleFilter === "owner" && repo.role && repo.role !== "owner") return false;
         if (activeRoleFilter === "collaborator" && repo.role !== "collaborator") return false;
         if (activeRoleFilter === "organization_member" && repo.role !== "organization_member") return false;
       }
 
-      // 2. Filter by Status
-      if (activeStatusFilter !== "all" && repo.status !== activeStatusFilter) {
-        return false;
-      }
-
-      // 3. Search Query
+      // 2. Search Query Filter
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
         const matchName = repo.name.toLowerCase().includes(q);
@@ -48,14 +43,49 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
 
       return true;
     });
-  }, [initialRepos, activeRoleFilter, activeStatusFilter, searchQuery]);
+  }, [initialRepos, activeRoleFilter, searchQuery]);
+
+  // Step 2: DYNAMICALLY RECALCULATE TOP STATISTICAL CARDS based on applied role & search filters
+  const dynamicStats = useMemo(() => {
+    let synced = 0;
+    let modified = 0;
+    let ahead = 0;
+    let behind = 0;
+    let openIssues = 0;
+    let pullRequests = 0;
+
+    roleAndSearchFilteredRepos.forEach((repo) => {
+      openIssues += repo.openIssuesCount || 0;
+      pullRequests += repo.openPullRequestsCount || 0;
+      if (repo.status === "modified") modified++;
+      else if (repo.status === "behind") behind++;
+      else if (repo.status === "ahead") ahead++;
+      else synced++;
+    });
+
+    return {
+      totalRepos: roleAndSearchFilteredRepos.length,
+      syncedRepos: synced,
+      modifiedRepos: modified,
+      aheadRepos: ahead,
+      behindRepos: behind,
+      openIssues,
+      pullRequests,
+    };
+  }, [roleAndSearchFilteredRepos]);
+
+  // Step 3: Final filtered list for the Grid (includes Status Filter)
+  const finalFilteredRepos = useMemo(() => {
+    if (activeStatusFilter === "all") return roleAndSearchFilteredRepos;
+    return roleAndSearchFilteredRepos.filter((repo) => repo.status === activeStatusFilter);
+  }, [roleAndSearchFilteredRepos, activeStatusFilter]);
 
   // Reset pagination to page 1 whenever filters change
-  const totalPages = Math.ceil(filteredRepos.length / ITEMS_PER_PAGE) || 1;
+  const totalPages = Math.ceil(finalFilteredRepos.length / ITEMS_PER_PAGE) || 1;
   const paginatedRepos = useMemo(() => {
     const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
-    return filteredRepos.slice(startIdx, startIdx + ITEMS_PER_PAGE);
-  }, [filteredRepos, currentPage]);
+    return finalFilteredRepos.slice(startIdx, startIdx + ITEMS_PER_PAGE);
+  }, [finalFilteredRepos, currentPage]);
 
   const handleStatusCardClick = (status: string) => {
     setActiveStatusFilter(status);
@@ -93,7 +123,7 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
 
   return (
     <div className="space-y-8">
-      {/* INTERACTIVE STATISTICAL CARDS BAR (CLICK TO FILTER) */}
+      {/* DYNAMIC STATISTICAL CARDS BAR (UPDATING IN REAL-TIME ACCORDING TO APPLIED FILTERS) */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {/* Total Repos Card */}
         <button
@@ -105,7 +135,7 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
           }`}
         >
           <div className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">Total Repos</div>
-          <div className="text-2xl font-bold text-white mt-1">{stats.totalRepos}</div>
+          <div className="text-2xl font-bold text-white mt-1">{dynamicStats.totalRepos}</div>
         </button>
 
         {/* Synced Repos Card */}
@@ -118,7 +148,7 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
           }`}
         >
           <div className="text-[11px] font-medium text-emerald-400 uppercase tracking-wider">Synced</div>
-          <div className="text-2xl font-bold text-emerald-400 mt-1">{stats.syncedRepos}</div>
+          <div className="text-2xl font-bold text-emerald-400 mt-1">{dynamicStats.syncedRepos}</div>
         </button>
 
         {/* Modified Repos Card */}
@@ -131,7 +161,7 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
           }`}
         >
           <div className="text-[11px] font-medium text-amber-400 uppercase tracking-wider">Modified</div>
-          <div className="text-2xl font-bold text-amber-400 mt-1">{stats.modifiedRepos}</div>
+          <div className="text-2xl font-bold text-amber-400 mt-1">{dynamicStats.modifiedRepos}</div>
         </button>
 
         {/* Ahead Repos Card */}
@@ -144,7 +174,7 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
           }`}
         >
           <div className="text-[11px] font-medium text-indigo-400 uppercase tracking-wider">Ahead</div>
-          <div className="text-2xl font-bold text-indigo-400 mt-1">{stats.aheadRepos}</div>
+          <div className="text-2xl font-bold text-indigo-400 mt-1">{dynamicStats.aheadRepos}</div>
         </button>
 
         {/* Behind Repos Card */}
@@ -157,17 +187,17 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
           }`}
         >
           <div className="text-[11px] font-medium text-rose-400 uppercase tracking-wider">Behind</div>
-          <div className="text-2xl font-bold text-rose-400 mt-1">{stats.behindRepos}</div>
+          <div className="text-2xl font-bold text-rose-400 mt-1">{dynamicStats.behindRepos}</div>
         </button>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 text-center">
           <div className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">Open Issues</div>
-          <div className="text-2xl font-bold text-white mt-1">{stats.openIssues}</div>
+          <div className="text-2xl font-bold text-white mt-1">{dynamicStats.openIssues}</div>
         </div>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 text-center">
           <div className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider">Pull Requests</div>
-          <div className="text-2xl font-bold text-purple-400 mt-1">{stats.pullRequests}</div>
+          <div className="text-2xl font-bold text-purple-400 mt-1">{dynamicStats.pullRequests}</div>
         </div>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 text-center">
@@ -345,9 +375,9 @@ export default function RepositoryFilterGrid({ initialRepos, stats }: Repository
               <div className="text-xs font-mono text-zinc-400">
                 Showing <strong className="text-white">{(currentPage - 1) * ITEMS_PER_PAGE + 1}</strong> -{" "}
                 <strong className="text-white">
-                  {Math.min(currentPage * ITEMS_PER_PAGE, filteredRepos.length)}
+                  {Math.min(currentPage * ITEMS_PER_PAGE, finalFilteredRepos.length)}
                 </strong>{" "}
-                of <strong className="text-white">{filteredRepos.length}</strong> repositories
+                of <strong className="text-white">{finalFilteredRepos.length}</strong> repositories
               </div>
 
               <div className="flex items-center gap-2">

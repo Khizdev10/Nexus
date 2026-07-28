@@ -9,41 +9,42 @@ const globalForDevOS = globalThis as unknown as {
   __devos_token_cache?: { token: string; timestamp: number };
 };
 
-const CACHE_TTL_MS = 60 * 1000; // 60 seconds — short enough to detect GitHub web edits quickly
+const CACHE_TTL_MS = 60 * 1000; // 60 seconds
 
 /**
- * Known GitHub repo name → local folder name mappings.
- * If a GitHub repo is named differently from its local folder on disk,
- * add the mapping here.
+ * Known GitHub repo name -> local folder name mappings.
  */
 const REPO_NAME_TO_LOCAL_FOLDER: Record<string, string> = {
   Nexus: "devi",
+  nexus: "devi",
+  devi: "devi",
 };
 
 /**
  * Resolve the local disk path for a GitHub repository.
- * Checks known name mappings first, then falls back to c:\coding\projects\{repo.name}.
- * Returns the path only if the folder actually exists on disk.
+ * Strictly maps to its specific local folder on disk (`c:\coding\projects\<repoName>`).
  */
 function resolveLocalPath(repoName: string): string {
   const basePath = "c:\\coding\\projects";
 
-  // Check known name mappings
-  const mappedName = REPO_NAME_TO_LOCAL_FOLDER[repoName];
-  if (mappedName) {
-    const mappedPath = path.join(/*turbopackIgnore: true*/ basePath, mappedName);
-    if (fs.existsSync(mappedPath)) {
-      return mappedPath;
-    }
+  // 1. Check explicit mapping if defined (e.g. Nexus -> devi)
+  const mapped = REPO_NAME_TO_LOCAL_FOLDER[repoName];
+  if (mapped) {
+    const mappedPath = path.join(/*turbopackIgnore: true*/ basePath, mapped);
+    if (fs.existsSync(mappedPath)) return mappedPath;
   }
 
-  // Default: use repo name directly
-  return path.join(/*turbopackIgnore: true*/ basePath, repoName);
+  // 2. Check exact repoName folder on hard drive
+  const directPath = path.join(/*turbopackIgnore: true*/ basePath, repoName);
+  if (fs.existsSync(directPath)) {
+    return directPath;
+  }
+
+  return directPath;
 }
 
 /**
- * Service to fetch, import, and transform GitHub Repositories for DevOS.
- * Uses 60s globalThis memory cache for instant navigation.
+ * Service to fetch, import, and transform GitHub Repositories for Nexus.
  */
 export async function getGitHubOAuthToken(): Promise<string | null> {
   if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
@@ -72,14 +73,13 @@ export async function getGitHubOAuthToken(): Promise<string | null> {
     }
     return null;
   } catch (error) {
-    console.error("[DevOS GitHub Service] Error retrieving GitHub OAuth token:", error);
+    console.error("[Nexus GitHub Service] Error retrieving GitHub OAuth token:", error);
     return null;
   }
 }
 
 /**
  * Invalidate the repo cache so the next call fetches fresh data from GitHub API.
- * Call this after performing git actions that change remote state (push/delete).
  */
 export function clearRepoCache(): void {
   globalForDevOS.__devos_repo_cache = undefined;
@@ -96,21 +96,20 @@ export async function fetchGitHubUserRepositories(token: string, limit = 20): Pr
   }
 
   try {
-    // Fetch owned, collaborator, and organization team repositories
     const res = await fetch(
       `https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=${limit}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/vnd.github.v3+json",
-          "User-Agent": "DevOS-App",
+          "User-Agent": "Nexus-App",
         },
         cache: "no-store",
       }
     );
 
     if (!res.ok) {
-      console.error("[DevOS GitHub Service] GitHub API Error:", res.status);
+      console.error("[Nexus GitHub Service] GitHub API Error:", res.status);
       return [];
     }
 
@@ -120,7 +119,6 @@ export async function fetchGitHubUserRepositories(token: string, limit = 20): Pr
       const ownerLogin = repo.owner?.login || "owner";
       let role: DevOSRepository["role"] = "owner";
 
-      // Determine role based on permissions or owner login comparison
       if (repo.permissions) {
         if (repo.permissions.admin) role = "owner";
         else if (repo.permissions.push) role = "collaborator";
@@ -145,7 +143,6 @@ export async function fetchGitHubUserRepositories(token: string, limit = 20): Pr
         updatedAt: repo.updated_at,
         localPath: resolveLocalPath(repo.name),
 
-        // Git Status Attributes
         currentBranch: repo.default_branch || "main",
         aheadCount: 0,
         behindCount: 0,
@@ -166,7 +163,7 @@ export async function fetchGitHubUserRepositories(token: string, limit = 20): Pr
 
     return result;
   } catch (error) {
-    console.error("[DevOS GitHub Service] Error fetching repositories:", error);
+    console.error("[Nexus GitHub Service] Error fetching repositories:", error);
     return [];
   }
 }
