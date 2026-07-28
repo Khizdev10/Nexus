@@ -7,17 +7,25 @@ import {
   CircleDot,
   GitPullRequest,
   Settings,
-  Bot,
   ExternalLink,
   X,
   FileCode,
   Sparkles,
+  MessageSquare,
+  FolderTree,
+  Folder,
+  Shield,
 } from "lucide-react";
 import { getGitHubOAuthToken, fetchGitHubUserRepositories } from "@/lib/services/github/repositories";
 import { fetchGitHubRepoCommits, fetchGitHubCommitDetails } from "@/lib/services/github/commits";
+import { fetchGitHubRepoIssues, DevOSIssue } from "@/lib/services/github/issues";
+import { fetchGitHubRepoPullRequests, DevOSPullRequest } from "@/lib/services/github/pulls";
+import { getLocalAndRemoteBranches, DevOSBranch } from "@/lib/services/git/branches";
 import { getLocalGitStatus } from "@/lib/services/git/status";
 import { DevOSCommit } from "@/types/devos";
 import GitQuickActionsBar from "@/components/devos/GitQuickActionsBar";
+import BranchControls from "@/components/devos/BranchControls";
+import RepositoryFilesExplorer from "@/components/devos/RepositoryFilesExplorer";
 
 interface RepositoryDashboardProps {
   params: Promise<{ id: string }>;
@@ -37,8 +45,13 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
   const repo = repos.find((r) => r.id === repoId || r.name === repoId) || repos[0] || null;
 
   const owner = repo?.cloneUrl.split("github.com/")[1]?.split("/")[0] || "owner";
-  const commits: DevOSCommit[] =
-    token && repo ? await fetchGitHubRepoCommits(token, owner, repo.name, 30) : [];
+
+  // Parallelize tab data fetching
+  const [commits, issues, pulls] = await Promise.all([
+    token && repo ? fetchGitHubRepoCommits(token, owner, repo.name, 30) : Promise.resolve([]),
+    token && repo ? fetchGitHubRepoIssues(token, owner, repo.name, "all") : Promise.resolve([]),
+    token && repo ? fetchGitHubRepoPullRequests(token, owner, repo.name, "all") : Promise.resolve([]),
+  ]);
 
   const commitDetail: DevOSCommit | null =
     token && repo && selectedSha
@@ -46,6 +59,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
       : null;
 
   const localStatus = repo?.localPath ? getLocalGitStatus(repo.localPath) : null;
+  const branches: DevOSBranch[] = repo?.localPath ? getLocalAndRemoteBranches(repo.localPath) : [];
 
   if (!repo) {
     return (
@@ -98,10 +112,11 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
       <div className="flex items-center gap-2 border-b border-zinc-800 pb-3 overflow-x-auto">
         {[
           { key: "overview", label: "Overview", icon: <BarChart3 className="w-4 h-4" /> },
-          { key: "commits", label: "Commits", icon: <History className="w-4 h-4" /> },
-          { key: "branches", label: "Branches", icon: <GitBranch className="w-4 h-4" /> },
-          { key: "issues", label: `Issues (${repo.openIssuesCount})`, icon: <CircleDot className="w-4 h-4" /> },
-          { key: "pull-requests", label: `Pull Requests (${repo.openPullRequestsCount})`, icon: <GitPullRequest className="w-4 h-4" /> },
+          { key: "files", label: "Files", icon: <FolderTree className="w-4 h-4" /> },
+          { key: "commits", label: `Commits (${commits.length})`, icon: <History className="w-4 h-4" /> },
+          { key: "branches", label: `Branches (${branches.length})`, icon: <GitBranch className="w-4 h-4" /> },
+          { key: "issues", label: `Issues (${issues.length})`, icon: <CircleDot className="w-4 h-4" /> },
+          { key: "pull-requests", label: `Pull Requests (${pulls.length})`, icon: <GitPullRequest className="w-4 h-4" /> },
           { key: "settings", label: "Settings", icon: <Settings className="w-4 h-4" /> },
         ].map((tab) => {
           const isActive = activeTab === tab.key;
@@ -226,7 +241,17 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
         </div>
       )}
 
-      {/* TAB 2: COMMITS */}
+      {/* TAB 2: FILES (CODE EXPLORER WITH COMMIT TREE CHECKPOINT FALLBACK) */}
+      {activeTab === "files" && (
+        <RepositoryFilesExplorer
+          repoId={repo.id}
+          repoName={repo.name}
+          localPath={repo.localPath || `c:\\coding\\projects\\${repo.name}`}
+          commits={commits}
+        />
+      )}
+
+      {/* TAB 3: COMMITS */}
       {activeTab === "commits" && (
         <div className="space-y-6">
           <div className="flex items-center justify-between">
@@ -359,13 +384,250 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
         </div>
       )}
 
-      {/* OTHER TABS PLACEHOLDER */}
-      {["branches", "issues", "pull-requests", "settings"].includes(activeTab) && (
-        <div className="rounded-2xl border border-dashed border-zinc-800 p-12 text-center text-zinc-500 text-sm space-y-2">
-          <div className="text-2xl font-bold text-white capitalize">{activeTab} Module</div>
-          <p className="text-xs text-zinc-400 max-w-md mx-auto">
-            Ready for DevOS Phase 2 expansion. Modular architectural interfaces are established.
-          </p>
+      {/* TAB 4: BRANCHES */}
+      {activeTab === "branches" && (
+        <BranchControls
+          repoId={repo.id}
+          localPath={repo.localPath || `c:\\coding\\projects\\${repo.name}`}
+          branches={branches}
+        />
+      )}
+
+      {/* TAB 5: ISSUES */}
+      {activeTab === "issues" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <CircleDot className="w-5 h-5 text-indigo-400" />
+                GitHub Issues ({issues.length})
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">Live issues fetched from GitHub repository tracker</p>
+            </div>
+            <a
+              href={`${repo.cloneUrl}/issues`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-xs font-bold text-white transition-colors flex items-center gap-2 shadow-md shadow-indigo-500/20"
+            >
+              <span>New Issue on GitHub</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          {issues.length > 0 ? (
+            <div className="space-y-3">
+              {issues.map((issue: DevOSIssue) => (
+                <a
+                  key={issue.id}
+                  href={issue.htmlUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border border-zinc-800 bg-zinc-900/80 hover:bg-zinc-900 transition-all gap-4 group"
+                >
+                  <div className="flex items-start gap-3">
+                    <CircleDot className={`w-5 h-5 shrink-0 mt-0.5 ${issue.state === "open" ? "text-emerald-400" : "text-purple-400"}`} />
+                    <div>
+                      <div className="text-sm font-bold text-white group-hover:text-indigo-400 transition-colors flex items-center gap-2">
+                        <span>#{issue.number}</span>
+                        <span>{issue.title}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-zinc-400 mt-1">
+                        <span>opened by <strong className="text-zinc-300">{issue.authorName}</strong></span>
+                        <span>•</span>
+                        <span>{new Date(issue.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                        {issue.labels.length > 0 && (
+                          <div className="flex items-center gap-1.5 ml-2">
+                            {issue.labels.map((l, idx) => (
+                              <span
+                                key={idx}
+                                className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-zinc-800 text-zinc-300 border border-zinc-700"
+                              >
+                                {l.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0 text-xs font-mono text-zinc-400">
+                    <span className="flex items-center gap-1 bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-zinc-700">
+                      <MessageSquare className="w-3.5 h-3.5 text-zinc-400" />
+                      {issue.commentsCount}
+                    </span>
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase ${
+                      issue.state === "open"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        : "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                    }`}>
+                      {issue.state}
+                    </span>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-2xl space-y-2">
+              <CircleDot className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
+              <div className="font-bold text-zinc-300">No Issues Found</div>
+              <p className="text-xs text-zinc-500">There are no open or closed issues in this repository.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 6: PULL REQUESTS */}
+      {activeTab === "pull-requests" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <GitPullRequest className="w-5 h-5 text-purple-400" />
+                Pull Requests ({pulls.length})
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">Live pull requests fetched from GitHub repository tracker</p>
+            </div>
+            <a
+              href={`${repo.cloneUrl}/pulls`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs font-bold text-white transition-colors flex items-center gap-2 shadow-md shadow-purple-500/20"
+            >
+              <span>New Pull Request</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          {pulls.length > 0 ? (
+            <div className="space-y-3">
+              {pulls.map((pr: DevOSPullRequest) => (
+                <a
+                  key={pr.id}
+                  href={pr.htmlUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-4 rounded-2xl border border-zinc-800 bg-zinc-900/80 hover:bg-zinc-900 transition-all gap-4 group"
+                >
+                  <div className="flex items-start gap-3">
+                    <GitPullRequest className={`w-5 h-5 shrink-0 mt-0.5 ${
+                      pr.state === "merged" ? "text-purple-400" : pr.state === "open" ? "text-emerald-400" : "text-rose-400"
+                    }`} />
+                    <div>
+                      <div className="text-sm font-bold text-white group-hover:text-purple-400 transition-colors flex items-center gap-2">
+                        <span>#{pr.number}</span>
+                        <span>{pr.title}</span>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-zinc-400 mt-1">
+                        <span>opened by <strong className="text-zinc-300">{pr.authorName}</strong></span>
+                        <span>•</span>
+                        <span className="font-mono text-purple-400">{pr.headBranch} → {pr.baseBranch}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase ${
+                      pr.state === "merged"
+                        ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                        : pr.state === "open"
+                        ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                        : "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                    }`}>
+                      {pr.state}
+                    </span>
+                  </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16 text-zinc-500 text-sm border border-dashed border-zinc-800 rounded-2xl space-y-2">
+              <GitPullRequest className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
+              <div className="font-bold text-zinc-300">No Pull Requests Found</div>
+              <p className="text-xs text-zinc-500">There are no open or merged pull requests in this repository.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 7: SETTINGS */}
+      {activeTab === "settings" && (
+        <div className="space-y-8 max-w-4xl">
+          <div className="space-y-1">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <Settings className="w-5 h-5 text-indigo-400" />
+              Repository Settings & Configuration
+            </h2>
+            <p className="text-xs text-zinc-400">Manage local path mappings, clone URLs, and remote Git sync settings.</p>
+          </div>
+
+          <div className="space-y-6">
+            {/* General Info Card */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4 shadow-xl">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Folder className="w-4 h-4 text-indigo-400" />
+                Repository Details & Local Mapping
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                <div>
+                  <label className="text-zinc-500 block mb-1">Repository Name</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={repo.name}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-zinc-300 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-zinc-500 block mb-1">Default Branch</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={repo.defaultBranch}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-zinc-300 font-mono"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-zinc-500 block mb-1">Local Hard Drive Path</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={repo.localPath || `c:\\coding\\projects\\${repo.name}`}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-indigo-300 font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Git Security Card */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4 shadow-xl">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                <Shield className="w-4 h-4 text-emerald-400" />
+                Git Remote URLs & OAuth Access
+              </h3>
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="text-zinc-500 block mb-1">HTTPS Clone URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={repo.cloneUrl}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-zinc-300 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="text-zinc-500 block mb-1">SSH Remote URL</label>
+                  <input
+                    type="text"
+                    disabled
+                    value={repo.sshUrl}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-zinc-300 font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

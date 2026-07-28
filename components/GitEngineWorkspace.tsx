@@ -33,6 +33,8 @@ export default function GitEngineWorkspace({
     initialMode === "github" ? "github" : "local"
   );
 
+  const latestCommit = commits[0] || null;
+
   return (
     <div className="space-y-6">
       {/* Top Mode Tab Switcher Bar */}
@@ -115,9 +117,10 @@ export default function GitEngineWorkspace({
             repoName={selectedRepo?.name}
           />
 
-          {/* Control Panel Grid */}
+          {/* Control Panel Grid — Real GitHub & Workspace Data Only */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
+            {/* Card 1: Active Repository */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-white">Active Repository</h3>
                 <span className="text-xs text-indigo-400 font-mono">
@@ -145,39 +148,52 @@ export default function GitEngineWorkspace({
                 </div>
               )}
               <p className="text-xs text-zinc-400">
-                Select a repository to view live commit histories and trigger AI reviews.
+                Selected repository to inspect live commit feeds and heatmap activity.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
+            {/* Card 2: Real Latest Commit Feed Status */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">AI Code Reviewer</h3>
-                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Active
+                <h3 className="text-sm font-semibold text-white">Latest Commit Activity</h3>
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  {commits.length} Loaded
                 </span>
               </div>
-              <div className="space-y-2">
-                <div className="flex justify-between text-xs text-zinc-400">
-                  <span>Branch Health Index</span>
-                  <span className="text-emerald-400 font-bold">100/100</span>
+              {latestCommit ? (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-zinc-100 line-clamp-1">
+                    {latestCommit.commit?.message || "Recent Commit"}
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] font-mono text-zinc-400">
+                    <span>SHA: {latestCommit.sha?.substring(0, 7)}</span>
+                    <span className="text-zinc-500">
+                      {new Date(latestCommit.commit?.author?.date || Date.now()).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </span>
+                  </div>
                 </div>
-                <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-indigo-500 to-emerald-400 w-[100%]"></div>
-                </div>
-              </div>
+              ) : (
+                <div className="text-xs text-zinc-500 italic py-2">No commit history retrieved yet.</div>
+              )}
               <p className="text-xs text-zinc-400">
-                Scanning commits for performance bottlenecks and syntax errors.
+                Live commit feed synchronized directly from GitHub REST API.
               </p>
             </div>
 
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4">
+            {/* Card 3: Real GitHub Account Stats */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4 shadow-xl">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-white">GitHub API Status</h3>
-                <span className="text-xs text-emerald-400 font-medium">Rate Limit: OK</span>
+                <h3 className="text-sm font-semibold text-white">GitHub API Connection</h3>
+                <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Live
+                </span>
               </div>
               <div className="space-y-1">
                 <div className="text-2xl font-bold text-white">{repos.length} Repositories</div>
-                <div className="text-xs text-zinc-400">Fetched via GitHub REST API</div>
+                <div className="text-xs font-mono text-zinc-400">Authenticated via OAuth Token</div>
               </div>
               <p className="text-xs text-zinc-400">
                 Tokens auto-refreshed securely through Clerk session.
