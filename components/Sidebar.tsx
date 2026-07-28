@@ -1,21 +1,28 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton, Show } from "@clerk/nextjs";
-import { LayoutDashboard, FolderGit2, Zap, BarChart3, Settings } from "lucide-react";
+import {
+  LayoutDashboard,
+  FolderGit2,
+  Zap,
+  BarChart3,
+  Settings,
+  ChevronDown,
+  GitBranch,
+} from "lucide-react";
 
 export default function Sidebar() {
   const pathname = usePathname();
 
-  const navItems = [
-    {
-      href: "/dashboard",
-      label: "Overview",
-      icon: LayoutDashboard,
-      isActive: pathname === "/dashboard",
-    },
+  const isGitActive = pathname.startsWith("/source-control") || pathname === "/dashboard/git-engine";
+
+  // Auto-expand dropdown if user is currently inside any Git route
+  const [isGitDropdownOpen, setIsGitDropdownOpen] = useState<boolean>(isGitActive || true);
+
+  const gitSubItems = [
     {
       href: "/source-control",
       label: "Source Control",
@@ -30,18 +37,6 @@ export default function Sidebar() {
       badge: "AI",
       isActive: pathname === "/dashboard/git-engine",
     },
-    {
-      href: "/dashboard/analytics",
-      label: "Analytics",
-      icon: BarChart3,
-      isActive: pathname === "/dashboard/analytics",
-    },
-    {
-      href: "/dashboard/settings",
-      label: "Settings",
-      icon: Settings,
-      isActive: pathname === "/dashboard/settings",
-    },
   ];
 
   return (
@@ -53,44 +48,146 @@ export default function Sidebar() {
         </div>
 
         <nav className="space-y-1.5">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch={true}
-                className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
-                  item.isActive
-                    ? "bg-indigo-600/15 border border-indigo-500/40 text-white shadow-md shadow-indigo-500/10"
-                    : "text-zinc-400 hover:text-white hover:bg-zinc-800/60 border border-transparent"
+          {/* Overview */}
+          <Link
+            href="/dashboard"
+            prefetch={true}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              pathname === "/dashboard"
+                ? "bg-indigo-600/15 border border-indigo-500/40 text-white shadow-md shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-white hover:bg-zinc-800/60 border border-transparent"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <LayoutDashboard
+                className={`w-4 h-4 transition-colors ${
+                  pathname === "/dashboard" ? "text-indigo-400" : "text-zinc-400"
                 }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon
-                    className={`w-4 h-4 transition-colors ${
-                      item.isActive ? "text-indigo-400" : "text-zinc-400"
-                    }`}
-                  />
-                  <span>{item.label}</span>
-                </div>
+              />
+              <span>Overview</span>
+            </div>
+            {pathname === "/dashboard" && (
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+            )}
+          </Link>
 
-                {item.badge ? (
-                  <span
-                    className={`text-[10px] uppercase font-mono font-bold tracking-wider px-2 py-0.5 rounded-full ${
-                      item.isActive
-                        ? "bg-indigo-500/30 text-indigo-300 border border-indigo-500/50"
-                        : "bg-zinc-800 text-zinc-400 border border-zinc-700"
-                    }`}
-                  >
-                    {item.badge}
-                  </span>
-                ) : item.isActive ? (
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
-                ) : null}
-              </Link>
-            );
-          })}
+          {/* Git Modules Collapsible Dropdown */}
+          <div className="space-y-1">
+            <button
+              onClick={() => setIsGitDropdownOpen((prev) => !prev)}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                isGitActive
+                  ? "bg-indigo-600/10 border border-indigo-500/30 text-white"
+                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/60 border border-transparent"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <GitBranch
+                  className={`w-4 h-4 transition-colors ${
+                    isGitActive ? "text-indigo-400" : "text-zinc-400"
+                  }`}
+                />
+                <span>Git Modules</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  2
+                </span>
+                <ChevronDown
+                  className={`w-4 h-4 transition-transform duration-200 text-zinc-400 ${
+                    isGitDropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </div>
+            </button>
+
+            {/* Nested Sub-Tabs List */}
+            {isGitDropdownOpen && (
+              <div className="pl-4 pr-1 space-y-1 border-l-2 border-zinc-800 ml-5 py-1">
+                {gitSubItems.map((sub) => {
+                  const Icon = sub.icon;
+                  return (
+                    <Link
+                      key={sub.href}
+                      href={sub.href}
+                      prefetch={true}
+                      className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                        sub.isActive
+                          ? "bg-indigo-600/20 text-white border border-indigo-500/40 shadow-sm"
+                          : "text-zinc-400 hover:text-white hover:bg-zinc-800/50 border border-transparent"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Icon
+                          className={`w-3.5 h-3.5 ${
+                            sub.isActive ? "text-indigo-400" : "text-zinc-400"
+                          }`}
+                        />
+                        <span>{sub.label}</span>
+                      </div>
+
+                      <span
+                        className={`text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded ${
+                          sub.isActive
+                            ? "bg-indigo-500/30 text-indigo-300 border border-indigo-500/40"
+                            : "bg-zinc-800 text-zinc-500"
+                        }`}
+                      >
+                        {sub.badge}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Analytics */}
+          <Link
+            href="/dashboard/analytics"
+            prefetch={true}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              pathname === "/dashboard/analytics"
+                ? "bg-indigo-600/15 border border-indigo-500/40 text-white shadow-md shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-white hover:bg-zinc-800/60 border border-transparent"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <BarChart3
+                className={`w-4 h-4 transition-colors ${
+                  pathname === "/dashboard/analytics" ? "text-indigo-400" : "text-zinc-400"
+                }`}
+              />
+              <span>Analytics</span>
+            </div>
+            {pathname === "/dashboard/analytics" && (
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+            )}
+          </Link>
+
+          {/* Settings */}
+          <Link
+            href="/dashboard/settings"
+            prefetch={true}
+            className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+              pathname === "/dashboard/settings"
+                ? "bg-indigo-600/15 border border-indigo-500/40 text-white shadow-md shadow-indigo-500/10"
+                : "text-zinc-400 hover:text-white hover:bg-zinc-800/60 border border-transparent"
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <Settings
+                className={`w-4 h-4 transition-colors ${
+                  pathname === "/dashboard/settings" ? "text-indigo-400" : "text-zinc-400"
+                }`}
+              />
+              <span>Settings</span>
+            </div>
+            {pathname === "/dashboard/settings" && (
+              <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+            )}
+          </Link>
         </nav>
       </div>
 
