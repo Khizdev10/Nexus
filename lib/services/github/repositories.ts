@@ -18,8 +18,6 @@ const CACHE_TTL_MS = 60 * 1000; // 60 seconds — short enough to detect GitHub 
  */
 const REPO_NAME_TO_LOCAL_FOLDER: Record<string, string> = {
   Nexus: "devi",
-  // Add any other mismatches here, e.g.:
-  // "my-github-repo": "my-local-folder",
 };
 
 /**
@@ -81,13 +79,13 @@ export async function getGitHubOAuthToken(): Promise<string | null> {
 
 /**
  * Invalidate the repo cache so the next call fetches fresh data from GitHub API.
- * Call this after performing git actions that change remote state (push).
+ * Call this after performing git actions that change remote state (push/delete).
  */
 export function clearRepoCache(): void {
   globalForDevOS.__devos_repo_cache = undefined;
 }
 
-export async function fetchGitHubUserRepositories(token: string, limit = 10): Promise<DevOSRepository[]> {
+export async function fetchGitHubUserRepositories(token: string, limit = 20): Promise<DevOSRepository[]> {
   const now = Date.now();
   if (
     globalForDevOS.__devos_repo_cache &&
@@ -98,15 +96,18 @@ export async function fetchGitHubUserRepositories(token: string, limit = 10): Pr
   }
 
   try {
-    const res = await fetch(`https://api.github.com/user/repos?affiliation=owner&sort=updated&per_page=${limit}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github.v3+json",
-        "User-Agent": "DevOS-App",
-      },
-      // cache: "no-store" ensures fresh data every time in dev mode
-      cache: "no-store",
-    });
+    // Fetch owned, collaborator, and organization team repositories
+    const res = await fetch(
+      `https://api.github.com/user/repos?affiliation=owner,collaborator,organization_member&sort=updated&per_page=${limit}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "DevOS-App",
+        },
+        cache: "no-store",
+      }
+    );
 
     if (!res.ok) {
       console.error("[DevOS GitHub Service] GitHub API Error:", res.status);
@@ -115,33 +116,47 @@ export async function fetchGitHubUserRepositories(token: string, limit = 10): Pr
 
     const rawRepos = await res.json();
 
-    const result = rawRepos.map((repo: any): DevOSRepository => ({
-      id: String(repo.id),
-      githubId: repo.id,
-      name: repo.name,
-      description: repo.description || null,
-      language: repo.language || null,
-      visibility: repo.private ? "private" : "public",
-      defaultBranch: repo.default_branch || "main",
-      cloneUrl: repo.clone_url,
-      sshUrl: repo.ssh_url,
-      lastPush: repo.pushed_at || repo.updated_at,
-      isArchived: repo.archived || false,
-      createdAt: repo.created_at,
-      updatedAt: repo.updated_at,
-      localPath: resolveLocalPath(repo.name),
+    const result = rawRepos.map((repo: any): DevOSRepository => {
+      const ownerLogin = repo.owner?.login || "owner";
+      let role: DevOSRepository["role"] = "owner";
 
-      // Git Status Attributes — set defaults, overridden by page-level status logic
-      currentBranch: repo.default_branch || "main",
-      aheadCount: 0,
-      behindCount: 0,
-      uncommittedCount: 0,
-      status: "synced",
-      openIssuesCount: repo.open_issues_count || 0,
-      openPullRequestsCount: Math.floor((repo.open_issues_count || 0) / 3),
-      lastCommitMessage: `Update ${repo.name} repository assets`,
-      lastCommitDate: repo.pushed_at || repo.updated_at,
-    }));
+      // Determine role based on permissions or owner login comparison
+      if (repo.permissions) {
+        if (repo.permissions.admin) role = "owner";
+        else if (repo.permissions.push) role = "collaborator";
+        else role = "organization_member";
+      }
+
+      return {
+        id: String(repo.id),
+        githubId: repo.id,
+        name: repo.name,
+        ownerLogin,
+        role,
+        description: repo.description || null,
+        language: repo.language || null,
+        visibility: repo.private ? "private" : "public",
+        defaultBranch: repo.default_branch || "main",
+        cloneUrl: repo.clone_url,
+        sshUrl: repo.ssh_url,
+        lastPush: repo.pushed_at || repo.updated_at,
+        isArchived: repo.archived || false,
+        createdAt: repo.created_at,
+        updatedAt: repo.updated_at,
+        localPath: resolveLocalPath(repo.name),
+
+        // Git Status Attributes
+        currentBranch: repo.default_branch || "main",
+        aheadCount: 0,
+        behindCount: 0,
+        uncommittedCount: 0,
+        status: "synced",
+        openIssuesCount: repo.open_issues_count || 0,
+        openPullRequestsCount: Math.floor((repo.open_issues_count || 0) / 3),
+        lastCommitMessage: `Update ${repo.name} repository assets`,
+        lastCommitDate: repo.pushed_at || repo.updated_at,
+      };
+    });
 
     globalForDevOS.__devos_repo_cache = {
       data: result,

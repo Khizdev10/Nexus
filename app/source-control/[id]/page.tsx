@@ -15,6 +15,7 @@ import {
   FolderTree,
   Folder,
   Shield,
+  Trash2,
 } from "lucide-react";
 import { getGitHubOAuthToken, fetchGitHubUserRepositories } from "@/lib/services/github/repositories";
 import { fetchGitHubRepoCommits, fetchGitHubCommitDetails } from "@/lib/services/github/commits";
@@ -26,6 +27,7 @@ import { DevOSCommit } from "@/types/devos";
 import GitQuickActionsBar from "@/components/devos/GitQuickActionsBar";
 import BranchControls from "@/components/devos/BranchControls";
 import RepositoryFilesExplorer from "@/components/devos/RepositoryFilesExplorer";
+import DeleteRepoModal from "@/components/devos/DeleteRepoModal";
 
 interface RepositoryDashboardProps {
   params: Promise<{ id: string }>;
@@ -44,7 +46,7 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
   const repos = token ? await fetchGitHubUserRepositories(token) : [];
   const repo = repos.find((r) => r.id === repoId || r.name === repoId) || repos[0] || null;
 
-  const owner = repo?.cloneUrl.split("github.com/")[1]?.split("/")[0] || "owner";
+  const owner = repo?.cloneUrl.split("github.com/")[1]?.split("/")[0] || repo?.ownerLogin || "owner";
 
   // Parallelize tab data fetching
   const [commits, issues, pulls] = await Promise.all([
@@ -88,6 +90,15 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
             {repo.name}
             <span className="px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-zinc-800 text-zinc-400 border border-zinc-700">
               {repo.visibility.toUpperCase()}
+            </span>
+            <span className={`px-2.5 py-0.5 rounded text-xs font-mono font-bold uppercase ${
+              repo.role === "collaborator"
+                ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                : repo.role === "organization_member"
+                ? "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+                : "bg-zinc-800 text-zinc-400 border border-zinc-700"
+            }`}>
+              {repo.role}
             </span>
           </h1>
           <p className="text-sm text-zinc-400 mt-1">
@@ -164,6 +175,14 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
               </h3>
               <div className="space-y-3 text-xs text-zinc-300">
                 <div className="flex justify-between">
+                  <span className="text-zinc-500">Repository Owner</span>
+                  <span className="font-mono text-white font-bold">{owner}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">Access Role</span>
+                  <span className="font-mono text-purple-400 font-bold uppercase">{repo.role}</span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-zinc-500">Default Branch</span>
                   <span className="font-mono text-indigo-400 font-bold">{repo.defaultBranch}</span>
                 </div>
@@ -172,16 +191,8 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                   <span className="font-semibold text-white">{repo.language || "TypeScript"}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-zinc-500">Visibility</span>
-                  <span className="font-bold text-zinc-300 uppercase">{repo.visibility}</span>
-                </div>
-                <div className="flex justify-between">
                   <span className="text-zinc-500">Local Path</span>
                   <span className="font-mono text-zinc-400 truncate max-w-[180px]">{repo.localPath}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">SSH URL</span>
-                  <span className="font-mono text-zinc-400 truncate max-w-[180px]">{repo.sshUrl}</span>
                 </div>
               </div>
             </div>
@@ -557,9 +568,9 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
           <div className="space-y-1">
             <h2 className="text-xl font-bold text-white flex items-center gap-2">
               <Settings className="w-5 h-5 text-indigo-400" />
-              Repository Settings & Configuration
+              Repository Settings & Danger Zone
             </h2>
-            <p className="text-xs text-zinc-400">Manage local path mappings, clone URLs, and remote Git sync settings.</p>
+            <p className="text-xs text-zinc-400">Manage local path mappings, clone URLs, and remote Git actions.</p>
           </div>
 
           <div className="space-y-6">
@@ -625,6 +636,35 @@ export default async function RepositoryDashboardPage(props: RepositoryDashboard
                     className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-zinc-300 font-mono"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* DANGER ZONE CARD */}
+            <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-6 space-y-4 shadow-xl">
+              <div className="flex items-center justify-between border-b border-rose-500/20 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-rose-300 uppercase tracking-wider flex items-center gap-2">
+                    <Trash2 className="w-4 h-4 text-rose-400" />
+                    Danger Zone
+                  </h3>
+                  <p className="text-xs text-rose-400/80 mt-0.5">
+                    Permanently delete this repository on GitHub.com and optionally remove local PC files.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <div className="text-xs text-zinc-300">
+                  <span className="font-bold text-white block">Delete this repository</span>
+                  <span className="text-zinc-400 text-[11px]">Once deleted, it cannot be recovered.</span>
+                </div>
+
+                <DeleteRepoModal
+                  repoId={repo.id}
+                  repoName={repo.name}
+                  ownerLogin={owner}
+                  localPath={repo.localPath || `c:\\coding\\projects\\${repo.name}`}
+                />
               </div>
             </div>
           </div>

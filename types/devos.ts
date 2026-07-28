@@ -16,6 +16,8 @@ export interface DevOSRepository {
   id: string;
   githubId: number;
   name: string;
+  ownerLogin: string;
+  role: "owner" | "collaborator" | "organization_member";
   description: string | null;
   language: string | null;
   visibility: "public" | "private";

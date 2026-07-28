@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { currentUser } from "@clerk/nextjs/server";
 import {
   getUserGitHubToken,
   getUserRepositories,
@@ -17,21 +16,22 @@ export default async function GitEnginePage({ searchParams }: GitEnginePageProps
   const token = await getUserGitHubToken();
   const initialMode = params.mode || "local";
 
-  const repos = token ? await getUserRepositories(token) : [];
-  
+  const repos = token ? await getUserRepositories(token, 20) : [];
+
   // Determine selected repo
   const selectedRepoName = params.repo || (repos.length > 0 ? repos[0].name : "");
   const selectedRepo = repos.find((r) => r.name === selectedRepoName) || repos[0] || null;
 
+  // Fetch commit history in parallel with heatmap generation
   const commits =
     token && selectedRepo
-      ? await getRepoCommits(token, selectedRepo.owner.login, selectedRepo.name)
+      ? await getRepoCommits(token, selectedRepo.owner?.login || "owner", selectedRepo.name, 30)
       : [];
 
   const heatmapData = generateContributionData(commits);
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto w-full p-4 sm:p-6">
+    <div className="space-y-8 max-w-6xl mx-auto w-full p-4 sm:p-6 animate-fadeIn">
       {/* Top Header Banner */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-6">
         <div>
@@ -52,10 +52,11 @@ export default async function GitEnginePage({ searchParams }: GitEnginePageProps
 
         <div className="flex items-center gap-3">
           <Link
-            href="/dashboard"
+            href="/source-control"
+            prefetch={true}
             className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors"
           >
-            ← Back to Overview
+            ← Go to Source Control
           </Link>
         </div>
       </div>

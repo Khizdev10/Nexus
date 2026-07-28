@@ -24,9 +24,28 @@ function parseGitHubRepoPath(remoteUrl: string): string | null {
 }
 
 /**
+ * Parses raw git error messages into user-friendly diagnostic guidance
+ */
+function parseDetailedGitError(errStr: string, action: string): string {
+  if (errStr.includes("403") || errStr.includes("Permission to") || errStr.includes("denied to") || errStr.includes("write access")) {
+    return `GitHub Permission Denied (403): Your collaborator access to this repository has expired or been revoked by the owner. WHAT TO DO: Ask the repository owner to re-invite your GitHub username with 'Write' access in GitHub repository settings.`;
+  }
+  if (errStr.includes("401") || errStr.includes("Bad credentials") || errStr.includes("Invalid token")) {
+    return `GitHub Authentication Expired (401): Your Personal Access Token or Clerk OAuth session has expired. WHAT TO DO: Please sign out and re-connect your GitHub account.`;
+  }
+  if (errStr.includes("non-fast-forward") || errStr.includes("behind") || errStr.includes("rejected")) {
+    return `Push Rejected (Behind Remote): Remote repository has new commits that are not on your PC yet. WHAT TO DO: Click 'Pull' first to download remote changes, then push again.`;
+  }
+  if (errStr.includes("merge conflict") || errStr.includes("CONFLICT")) {
+    return `Git Merge Conflict: Remote changes conflict with your local code modifications. WHAT TO DO: Open VS Code to resolve conflicts, then commit and push.`;
+  }
+  return `Git ${action} failed: ${errStr}`;
+}
+
+/**
  * Executes local Git operations: commit, push, pull, fetch with GitHub OAuth / PAT support.
  * Clears local status & repo caches and updates local remote tracking refs to guarantee
- * immediate SYNCED state in the UI.
+ * immediate SYNCED state in the UI. Includes rich diagnostic error guidance.
  */
 export function executeGitAction(
   localPath: string,
@@ -45,7 +64,6 @@ export function executeGitAction(
       case "fetch": {
         let fetchCmd = "git fetch --all";
 
-        // Use PAT-authenticated fetch if token is available
         if (activeToken) {
           try {
             const remoteUrl = execSync("git remote get-url origin", { cwd: localPath, encoding: "utf-8" }).trim();
@@ -53,16 +71,25 @@ export function executeGitAction(
             if (repoPath) {
               fetchCmd = `git -c credential.helper= fetch https://${activeToken}@github.com/${repoPath}.git`;
             }
-          } catch { /* fall back to unauthenticated fetch */ }
+          } catch {}
         }
 
-        const out = execSync(fetchCmd, {
-          cwd: localPath,
-          encoding: "utf-8",
-          timeout: 10000,
-        });
-        clearStatusCache(localPath);
-        return { success: true, message: "Fetched latest changes from GitHub origin.", output: out };
+        try {
+          const out = execSync(fetchCmd, {
+            cwd: localPath,
+            encoding: "utf-8",
+            timeout: 10000,
+          });
+          clearStatusCache(localPath);
+          return { success: true, message: "Fetched latest changes from GitHub origin.", output: out };
+        } catch (fetchErr: any) {
+          const errStr = fetchErr?.stderr || fetchErr?.stdout || fetchErr?.message || "";
+          return {
+            success: false,
+            message: parseDetailedGitError(errStr, "fetch"),
+            output: errStr,
+          };
+        }
       }
 
       case "pull": {
@@ -91,7 +118,7 @@ export function executeGitAction(
           const errMsg = pullErr?.stderr || pullErr?.stdout || pullErr?.message || "";
           return {
             success: false,
-            message: `Git pull error: ${errMsg}`,
+            message: parseDetailedGitError(errMsg, "pull"),
             output: errMsg,
           };
         }
@@ -101,13 +128,22 @@ export function executeGitAction(
         if (!commitMessage) {
           return { success: false, message: "Commit message is required." };
         }
-        execSync("git add .", { cwd: localPath, encoding: "utf-8" });
-        const out = execSync(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, {
-          cwd: localPath,
-          encoding: "utf-8",
-        });
-        clearStatusCache(localPath);
-        return { success: true, message: "Committed changes to local repository.", output: out };
+        try {
+          execSync("git add .", { cwd: localPath, encoding: "utf-8" });
+          const out = execSync(`git commit -m "${commitMessage.replace(/"/g, '\\"')}"`, {
+            cwd: localPath,
+            encoding: "utf-8",
+          });
+          clearStatusCache(localPath);
+          return { success: true, message: "Committed changes to local repository.", output: out };
+        } catch (commitErr: any) {
+          const errStr = commitErr?.stderr || commitErr?.stdout || commitErr?.message || "";
+          return {
+            success: false,
+            message: parseDetailedGitError(errStr, "commit"),
+            output: errStr,
+          };
+        }
       }
 
       case "push": {
@@ -139,7 +175,6 @@ export function executeGitAction(
                 timeout: 30000,
               });
 
-              // CRITICAL FIX: Update local tracking ref so git status reflects 0 ahead immediately
               try {
                 execSync(`git update-ref refs/remotes/origin/${branch} HEAD`, { cwd: localPath, encoding: "utf-8" });
               } catch {}
@@ -154,17 +189,11 @@ export function executeGitAction(
             }
           } catch (tokenPushErr: any) {
             const errStr = tokenPushErr?.stderr || tokenPushErr?.stdout || tokenPushErr?.message || "";
-            if (errStr.includes("non-fast-forward") || errStr.includes("behind") || errStr.includes("rejected")) {
-              throw new Error(
-                "Push Rejected (Behind Remote): Remote GitHub repository has new commits that are not on your PC yet (e.g. files created on GitHub). Please click 'Pull' first to download remote changes!"
-              );
-            }
-            if (errStr.includes("403") || errStr.includes("Permission")) {
-              throw new Error(
-                "GitHub Permission Denied (403): Your Personal Access Token lacks 'repo' write permissions."
-              );
-            }
-            throw new Error(`Git push failed: ${errStr}`);
+            return {
+              success: false,
+              message: parseDetailedGitError(errStr, "push"),
+              output: errStr,
+            };
           }
         }
 
@@ -188,13 +217,12 @@ export function executeGitAction(
             output: out,
           };
         } catch (systemPushErr: any) {
-          const errMsg = systemPushErr?.stderr || systemPushErr?.message || "";
-          if (errMsg.includes("non-fast-forward") || errMsg.includes("behind")) {
-            throw new Error(
-              "Push Rejected (Behind Remote): Remote GitHub repository has new commits that are not on your PC yet. Please click 'Pull' first to download remote changes!"
-            );
-          }
-          throw systemPushErr;
+          const errMsg = systemPushErr?.stderr || systemPushErr?.stdout || systemPushErr?.message || "";
+          return {
+            success: false,
+            message: parseDetailedGitError(errMsg, "push"),
+            output: errMsg,
+          };
         }
       }
 
