@@ -374,7 +374,7 @@ export default function RepositoryFilterGrid({
                 <div className="pt-2">
                   <Link
                     href={`/source-control/${repo.id}`}
-                    prefetch={true}
+                    prefetch={false}
                     className="w-full flex items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 py-2.5 text-xs font-bold text-white transition-all shadow-md shadow-indigo-500/20"
                   >
                     Open Repository Dashboard →

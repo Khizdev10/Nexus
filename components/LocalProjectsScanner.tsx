@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { LocalProject, LocalFileChange } from "@/app/api/local-projects/route";
 import FileDiffViewer from "@/components/FileDiffViewer";
 import AiPushAdvisor from "@/components/AiPushAdvisor";
+import LocalAgentDesktopCard from "@/components/agent/LocalAgentDesktopCard";
 
 export default function LocalProjectsScanner() {
   const [isMounted, setIsMounted] = useState(false);
@@ -96,6 +97,9 @@ export default function LocalProjectsScanner() {
 
   return (
     <div className="space-y-6">
+      {/* 1-Click Desktop Agent Card */}
+      <LocalAgentDesktopCard />
+
       {/* Search Directory Bar & Live Sync Status Header */}
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-4 shadow-xl">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800/80 pb-4">

@@ -7,6 +7,7 @@ import { getGitHubOAuthToken, fetchGitHubUserRepositories } from "@/lib/services
 import { getLocalGitStatusAsync } from "@/lib/services/git/status";
 import { DevOSOverallStats, DevOSRepository } from "@/types/devos";
 import RepositoryFilterGrid from "@/components/devos/RepositoryFilterGrid";
+import LocalAgentDesktopCard from "@/components/agent/LocalAgentDesktopCard";
 
 export default async function SourceControlHomePage() {
   const { userId } = await auth();
@@ -143,6 +144,9 @@ export default async function SourceControlHomePage() {
           </Show>
         </div>
       )}
+
+      {/* Local Desktop Agent Launcher & Detection Card */}
+      <LocalAgentDesktopCard />
 
       {/* Interactive Repository Filter Grid & Stats Bar */}
       <RepositoryFilterGrid initialRepos={repos} stats={stats} />

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
 import { getUserGitHubToken, getUserRepositories } from "@/lib/github";
+import LocalAgentDesktopCard from "@/components/agent/LocalAgentDesktopCard";
 
 export default async function DashboardPage() {
   const user = await currentUser();
@@ -69,6 +70,9 @@ export default async function DashboardPage() {
           <div className="text-xs text-emerald-400 font-medium">All systems operational</div>
         </div>
       </div>
+
+      {/* Local PC Desktop Agent Detection Card */}
+      <LocalAgentDesktopCard />
 
       {/* Quick Launch Cards */}
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-8 space-y-6">

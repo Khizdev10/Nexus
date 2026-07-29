@@ -217,7 +217,7 @@ export default function GitEngineWorkspace({
 
                 <Link
                   href={`/source-control/${selectedRepo.id || selectedRepo.name}?tab=commits`}
-                  prefetch={true}
+                  prefetch={false}
                   className="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-xs font-bold text-white transition-all shadow-md shadow-indigo-500/20 flex items-center gap-1.5 shrink-0"
                 >
                   <span>Open Full Commit History in Source Control</span>
@@ -275,7 +275,7 @@ export default function GitEngineWorkspace({
                           </span>
                           <Link
                             href={`/source-control/${selectedRepo.id || selectedRepo.name}?tab=commits&sha=${sha}`}
-                            prefetch={true}
+                            prefetch={false}
                             className="text-xs text-indigo-400 hover:text-indigo-300 font-semibold transition-colors"
                           >
                             Inspect Diff →
@@ -343,7 +343,7 @@ export default function GitEngineWorkspace({
                         <span className="text-zinc-500 font-mono">{repo.default_branch || "main"}</span>
                         <Link
                           href={`/source-control/${repo.id || repo.name}`}
-                          prefetch={true}
+                          prefetch={false}
                           className="text-indigo-400 hover:text-indigo-300 font-bold transition-colors"
                         >
                           View Details →
