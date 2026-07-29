@@ -9,7 +9,7 @@ const globalForDevOS = globalThis as unknown as {
   __devos_token_cache?: { token: string; timestamp: number };
 };
 
-const CACHE_TTL_MS = 60 * 1000; // 60 seconds
+const CACHE_TTL_MS = 1000; // 1 second cache TTL for instant live updates
 
 /**
  * Known GitHub repo name -> local folder name mappings.
@@ -124,7 +124,7 @@ export async function fetchGitHubUserRepositories(token: string, limit = 100): P
           "User-Agent": "Nexus-App",
           Accept: "application/vnd.github.v3+json",
         },
-        next: { revalidate: 15 },
+        cache: "no-store",
       }
     );
 

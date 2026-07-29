@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import {
   Folder,
@@ -29,19 +29,44 @@ export default function RepositoryFilterGrid({
   initialRepos,
   stats,
 }: RepositoryFilterGridProps) {
+  const [repos, setRepos] = useState<DevOSRepository[]>(initialRepos);
+  const [currentStats, setCurrentStats] = useState<DevOSOverallStats>(stats);
   const [activeRoleFilter, setActiveRoleFilter] = useState<"all" | "owner" | "collaborator" | "organization_member">("all");
   const [activeStatusFilter, setActiveStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const reposPerPage = 10;
+  const reposPerPage = 100;
+
+  // Poll API route every 3 seconds to fetch fresh Git status and timestamps
+  useEffect(() => {
+    const fetchLatestRepos = async () => {
+      try {
+        const res = await fetch("/api/devos/repositories");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.repositories) {
+            setRepos(data.repositories);
+          }
+          if (data.stats) {
+            setCurrentStats(data.stats);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to poll live repository status:", err);
+      }
+    };
+
+    const interval = setInterval(fetchLatestRepos, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Role Counts
-  const ownerCount = initialRepos.filter((r) => r.role === "owner").length;
-  const collaboratorCount = initialRepos.filter((r) => r.role === "collaborator").length;
-  const teamCount = initialRepos.filter((r) => r.role === "organization_member").length;
+  const ownerCount = repos.filter((r) => r.role === "owner").length;
+  const collaboratorCount = repos.filter((r) => r.role === "collaborator").length;
+  const teamCount = repos.filter((r) => r.role === "organization_member").length;
 
   // Filter Logic
-  const filteredRepos = initialRepos.filter((repo) => {
+  const filteredRepos = repos.filter((repo) => {
     // 1. Role Filter
     if (activeRoleFilter !== "all" && repo.role !== activeRoleFilter) {
       return false;
@@ -115,11 +140,10 @@ export default function RepositoryFilterGrid({
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <button
           onClick={() => handleStatCardClick("all")}
-          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${
-            activeStatusFilter === "all"
+          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${activeStatusFilter === "all"
               ? "border-indigo-500 bg-indigo-950/20 ring-2 ring-indigo-500/20"
               : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-zinc-400 text-xs">
             <span className="font-semibold uppercase tracking-wider text-[11px]">Total Repos</span>
@@ -133,11 +157,10 @@ export default function RepositoryFilterGrid({
 
         <button
           onClick={() => handleStatCardClick("synced")}
-          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${
-            activeStatusFilter === "synced"
+          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${activeStatusFilter === "synced"
               ? "border-emerald-500 bg-emerald-950/20 ring-2 ring-emerald-500/20"
               : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-zinc-400 text-xs">
             <span className="font-semibold uppercase tracking-wider text-[11px]">Synced</span>
@@ -149,11 +172,10 @@ export default function RepositoryFilterGrid({
 
         <button
           onClick={() => handleStatCardClick("modified")}
-          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${
-            activeStatusFilter === "modified"
+          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${activeStatusFilter === "modified"
               ? "border-amber-500 bg-amber-950/20 ring-2 ring-amber-500/20"
               : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-zinc-400 text-xs">
             <span className="font-semibold uppercase tracking-wider text-[11px]">Modified</span>
@@ -165,11 +187,10 @@ export default function RepositoryFilterGrid({
 
         <button
           onClick={() => handleStatCardClick("ahead")}
-          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${
-            activeStatusFilter === "ahead"
+          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${activeStatusFilter === "ahead"
               ? "border-purple-500 bg-purple-950/20 ring-2 ring-purple-500/20"
               : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-zinc-400 text-xs">
             <span className="font-semibold uppercase tracking-wider text-[11px]">Ahead</span>
@@ -181,11 +202,10 @@ export default function RepositoryFilterGrid({
 
         <button
           onClick={() => handleStatCardClick("behind")}
-          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${
-            activeStatusFilter === "behind"
+          className={`text-left rounded-2xl border p-4 transition-all shadow-lg ${activeStatusFilter === "behind"
               ? "border-rose-500 bg-rose-950/20 ring-2 ring-rose-500/20"
               : "border-zinc-800 bg-zinc-900/60 hover:border-zinc-700 hover:bg-zinc-900"
-          }`}
+            }`}
         >
           <div className="flex items-center justify-between text-zinc-400 text-xs">
             <span className="font-semibold uppercase tracking-wider text-[11px]">Behind</span>
@@ -215,22 +235,20 @@ export default function RepositoryFilterGrid({
         <div className="flex items-center gap-2 overflow-x-auto w-full lg:w-auto pb-2 lg:pb-0">
           <button
             onClick={() => handleRoleFilterClick("all")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${
-              activeRoleFilter === "all"
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 ${activeRoleFilter === "all"
                 ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
                 : "bg-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800"
-            }`}
+              }`}
           >
-            All Repos ({initialRepos.length})
+            All Repos ({repos.length})
           </button>
 
           <button
             onClick={() => handleRoleFilterClick("owner")}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
-              activeRoleFilter === "owner"
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${activeRoleFilter === "owner"
                 ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
                 : "bg-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800"
-            }`}
+              }`}
           >
             <User className="w-3.5 h-3.5 text-indigo-400" />
             <span>Owned ({ownerCount})</span>
@@ -239,11 +257,10 @@ export default function RepositoryFilterGrid({
           {collaboratorCount > 0 && (
             <button
               onClick={() => handleRoleFilterClick("collaborator")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
-                activeRoleFilter === "collaborator"
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${activeRoleFilter === "collaborator"
                   ? "bg-purple-600 text-white shadow-md shadow-purple-500/20"
                   : "bg-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800"
-              }`}
+                }`}
             >
               <Shield className="w-3.5 h-3.5 text-purple-400" />
               <span>Collaborator ({collaboratorCount})</span>
@@ -253,11 +270,10 @@ export default function RepositoryFilterGrid({
           {teamCount > 0 && (
             <button
               onClick={() => handleRoleFilterClick("organization_member")}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${
-                activeRoleFilter === "organization_member"
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1.5 ${activeRoleFilter === "organization_member"
                   ? "bg-sky-600 text-white shadow-md shadow-sky-500/20"
                   : "bg-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800"
-              }`}
+                }`}
             >
               <Users className="w-3.5 h-3.5 text-sky-400" />
               <span>Team ({teamCount})</span>

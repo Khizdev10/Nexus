@@ -39,17 +39,33 @@ export async function GET() {
             localStatus.stagedFiles.length +
             localStatus.untrackedFiles.length;
 
+          // Compare GitHub API lastPush timestamp with local git commit timestamp for instant BEHIND detection (>30 seconds)
+          // This avoids clock-lag false positives where a recent push or pull is misidentified due to clock drift
+          const githubPushTime = new Date(repo.lastPush).getTime();
+          const localCommitTime = localStatus.lastCommitDate ? new Date(localStatus.lastCommitDate).getTime() : 0;
+          const isRemoteNewer = githubPushTime > 0 && localCommitTime > 0 && (githubPushTime - localCommitTime > 30000);
+
+          if (isRemoteNewer || localStatus.behind > 0) {
+            repo.behindCount = localStatus.behind > 0 ? localStatus.behind : 1;
+          }
+
+          // 1. MODIFIED: Local uncommitted edits take top priority
           if (repo.uncommittedCount > 0) {
             repo.status = "modified";
             modifiedRepos++;
           } else if (repo.behindCount > 0) {
+            // 2. BEHIND: GitHub has commits that local doesn't have yet
             repo.status = "behind";
             behindRepos++;
-          } else if (repo.aheadCount > 0) {
+          } else if (localStatus.ahead > 0 && !isRemoteNewer) {
+            // 3. AHEAD: Local has unpushed commits (and remote is not newer)
             repo.status = "ahead";
             aheadRepos++;
           } else {
+            // 4. SYNCED: Local & GitHub are in exact 100% lockstep sync
             repo.status = "synced";
+            repo.aheadCount = 0;
+            repo.behindCount = 0;
           }
         } else {
           repo.status = "synced";

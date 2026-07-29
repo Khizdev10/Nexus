@@ -77,8 +77,8 @@ export default function GitEngineWorkspace({
         </div>
       </div>
 
-      {/* MODE 1: LOCAL PC PROJECTS */}
-      {activeMode === "local" && <LocalProjectsScanner />}
+      {/* MODE 1: LOCAL PC PROJECTS & SYNC */}
+      {activeMode === "local" && <LocalProjectsScanner gitHubRepos={repos} />}
 
       {/* MODE 2: REMOTE GITHUB REPOSITORIES */}
       {activeMode === "github" && (

@@ -27,7 +27,7 @@ export default async function SourceControlHomePage() {
       totalIssues += repo.openIssuesCount;
       totalPRs += repo.openPullRequestsCount;
 
-      if (repo.localPath && fs.existsSync(repo.localPath) && fs.existsSync(path.join(repo.localPath, ".git"))) {
+      if (repo.localPath && fs.existsSync(repo.localPath) && fs.existsSync(path.join(/*turbopackIgnore: true*/ repo.localPath, ".git"))) {
         const localStatus = await getLocalGitStatusAsync(repo.localPath);
         repo.currentBranch = localStatus.branch;
         repo.aheadCount = localStatus.ahead;
@@ -37,17 +37,24 @@ export default async function SourceControlHomePage() {
           localStatus.stagedFiles.length +
           localStatus.untrackedFiles.length;
 
+        // Truthful Git State Machine:
+        // 1. MODIFIED: Local uncommitted edits take top priority
         if (repo.uncommittedCount > 0) {
           repo.status = "modified";
           modifiedRepos++;
-        } else if (repo.behindCount > 0) {
+        } else if (localStatus.behind > 0) {
+          // 2. BEHIND: Local branch is behind origin
           repo.status = "behind";
           behindRepos++;
-        } else if (repo.aheadCount > 0) {
+        } else if (localStatus.ahead > 0) {
+          // 3. AHEAD: Local branch has unpushed commits
           repo.status = "ahead";
           aheadRepos++;
         } else {
+          // 4. SYNCED: Local HEAD & remote tracking branch match 100%
           repo.status = "synced";
+          repo.aheadCount = 0;
+          repo.behindCount = 0;
         }
       } else {
         repo.status = "synced";

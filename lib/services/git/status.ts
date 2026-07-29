@@ -8,10 +8,11 @@ const execPromise = promisify(exec);
 
 export interface ExtendedGitStatus extends DevOSGitStatus {
   lastCommitDate?: string;
+  headSha?: string;
 }
 
 const localStatusCache = new Map<string, { status: ExtendedGitStatus; timestamp: number }>();
-const CACHE_TTL_MS = 30 * 1000; // 30 seconds in-memory cache for 0ms instant tab switching & page loads
+const CACHE_TTL_MS = 1000; // 1 second fast cache TTL for instant post-push/pull updates
 
 /**
  * Invalidate the local git status cache for a specific repo path, or all repos.
@@ -126,7 +127,18 @@ export async function getLocalGitStatusAsync(localPath: string): Promise<Extende
       if (cleanIso) {
         result.lastCommitDate = cleanIso;
       }
-    } catch {}
+    } catch { }
+
+    try {
+      const { stdout: headShaOutput } = await execPromise("git rev-parse HEAD", {
+        cwd: localPath,
+        encoding: "utf-8",
+        timeout: 800,
+      });
+      if (headShaOutput) {
+        result.headSha = headShaOutput.trim();
+      }
+    } catch { }
 
     localStatusCache.set(localPath, { status: result, timestamp: now });
   } catch {
@@ -137,7 +149,7 @@ export async function getLocalGitStatusAsync(localPath: string): Promise<Extende
         timeout: 800,
       });
       result.branch = (b || "").trim() || "main";
-    } catch {}
+    } catch { }
   }
 
   return result;
@@ -217,10 +229,10 @@ export function getLocalGitStatus(localPath: string): ExtendedGitStatus {
         timeout: 800,
       }).trim().replace(/"/g, "");
       if (lastCommitIso) result.lastCommitDate = lastCommitIso;
-    } catch {}
+    } catch { }
 
     localStatusCache.set(localPath, { status: result, timestamp: now });
-  } catch {}
+  } catch { }
 
   return result;
 }
