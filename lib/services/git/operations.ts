@@ -8,9 +8,7 @@ export interface GitActionResult {
   message: string;
   output?: string;
 }
-
-
-// testing 
+// testing  fix
 /**
  * Extracts owner/repo from SSH or HTTPS GitHub remote URLs
  * e.g. git@github.com:owner/repo.git -> owner/repo
