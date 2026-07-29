@@ -9,6 +9,8 @@ export interface GitActionResult {
   output?: string;
 }
 
+
+// testing 
 /**
  * Extracts owner/repo from SSH or HTTPS GitHub remote URLs
  * e.g. git@github.com:owner/repo.git -> owner/repo
@@ -71,7 +73,7 @@ export function executeGitAction(
             if (repoPath) {
               fetchCmd = `git -c credential.helper= fetch https://${activeToken}@github.com/${repoPath}.git`;
             }
-          } catch {}
+          } catch { }
         }
 
         try {
@@ -102,7 +104,7 @@ export function executeGitAction(
             if (repoPath) {
               pullCmd = `git -c credential.helper= pull https://${activeToken}@github.com/${repoPath}.git ${branch} --no-rebase`;
             }
-          } catch {}
+          } catch { }
         }
 
         try {
@@ -150,7 +152,7 @@ export function executeGitAction(
         let branch = "main";
         try {
           branch = execSync("git branch --show-current", { cwd: localPath, encoding: "utf-8" }).trim() || "main";
-        } catch {}
+        } catch { }
 
         // Auto-commit uncommitted changes if any
         try {
@@ -160,7 +162,7 @@ export function executeGitAction(
             execSync("git add .", { cwd: localPath, encoding: "utf-8" });
             execSync(`git commit -m "${msg.replace(/"/g, '\\"')}"`, { cwd: localPath, encoding: "utf-8" });
           }
-        } catch {}
+        } catch { }
 
         // Authenticated Push using Token
         if (activeToken) {
@@ -177,7 +179,7 @@ export function executeGitAction(
 
               try {
                 execSync(`git update-ref refs/remotes/origin/${branch} HEAD`, { cwd: localPath, encoding: "utf-8" });
-              } catch {}
+              } catch { }
 
               clearStatusCache(localPath);
               clearRepoCache();
@@ -207,7 +209,7 @@ export function executeGitAction(
 
           try {
             execSync(`git update-ref refs/remotes/origin/${branch} HEAD`, { cwd: localPath, encoding: "utf-8" });
-          } catch {}
+          } catch { }
 
           clearStatusCache(localPath);
           clearRepoCache();
