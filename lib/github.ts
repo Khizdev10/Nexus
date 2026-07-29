@@ -86,7 +86,7 @@ export async function getUserGitHubToken(): Promise<string | null> {
   }
 }
 
-export async function getUserRepositories(token: string, limit = 10): Promise<GitHubRepo[]> {
+export async function getUserRepositories(token: string, limit = 100): Promise<GitHubRepo[]> {
   const now = Date.now();
   if (
     globalForGitHub.__github_user_repos_cache &&
@@ -97,14 +97,17 @@ export async function getUserRepositories(token: string, limit = 10): Promise<Gi
   }
 
   try {
-    const res = await fetch(`https://api.github.com/user/repos?affiliation=owner&sort=updated&per_page=${limit}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github.v3+json",
-        "User-Agent": "Nexus-App",
-      },
-      cache: "no-store",
-    });
+    const res = await fetch(
+      `https://api.github.com/user/repos?sort=updated&per_page=${limit}&affiliation=owner,collaborator,organization_member`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.github.v3+json",
+          "User-Agent": "Nexus-App",
+        },
+        cache: "no-store",
+      }
+    );
 
     if (!res.ok) {
       console.error("Failed to fetch GitHub repos:", res.status, res.statusText);

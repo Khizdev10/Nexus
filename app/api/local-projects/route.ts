@@ -81,7 +81,7 @@ export async function GET(request: Request) {
     // Filter valid project directories
     const validEntries = entries
       .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !IGNORED_FOLDERS.has(e.name))
-      .slice(0, 15); // Cap to max 15 active projects for performance
+      .slice(0, 100); // Support up to 100 local projects
 
     for (const entry of validEntries) {
       const projectPath = path.join(rootPath, entry.name);

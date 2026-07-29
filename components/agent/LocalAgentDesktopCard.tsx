@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
-import { Download, CheckCircle2, RefreshCw, Laptop, Zap, Copy, Check, AlertCircle } from "lucide-react";
+import { Download, CheckCircle2, RefreshCw, Laptop, Zap, Copy, Check, AlertCircle, Play } from "lucide-react";
 
 interface AgentData {
   hostname: string;
@@ -15,10 +15,20 @@ export default function LocalAgentDesktopCard() {
   const [isConnected, setIsConnected] = useState(false);
   const [agent, setAgent] = useState<AgentData | null>(null);
   const [pairToken, setPairToken] = useState<string | null>(null);
-  const [deepLinkUrl, setDeepLinkUrl] = useState<string | null>(null);
   const [downloadUrls, setDownloadUrls] = useState<Record<string, string>>({});
-  const [downloadTriggered, setDownloadTriggered] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [previouslyInstalled, setPreviouslyInstalled] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+
+  // Check localStorage for previous installation
+  useEffect(() => {
+    try {
+      const installed = localStorage.getItem("nexus-agent-installed");
+      if (installed === "true") {
+        setPreviouslyInstalled(true);
+      }
+    } catch { }
+  }, []);
 
   const fetchAgentStatus = useCallback(async () => {
     try {
@@ -28,28 +38,31 @@ export default function LocalAgentDesktopCard() {
         setIsConnected(data.isConnected);
         setAgent(data.agent);
         setPairToken(data.pairToken);
-        setDeepLinkUrl(data.deepLinkUrl);
         setDownloadUrls(data.downloadUrls || {});
+
+        // If connected, persist installation state
+        if (data.isConnected) {
+          try { localStorage.setItem("nexus-agent-installed", "true"); } catch { }
+          setPreviouslyInstalled(true);
+        }
       }
     } catch (err) {
       console.error("Failed to check local agent status:", err);
     } finally {
       setLoading(false);
+      setReconnectAttempts((prev) => prev + 1);
     }
   }, []);
 
   useEffect(() => {
     fetchAgentStatus();
-    // Poll agent status every 3 seconds for fast live detection
     const interval = setInterval(fetchAgentStatus, 3000);
     return () => clearInterval(interval);
   }, [fetchAgentStatus]);
 
   const handleDownloadClick = () => {
-    setDownloadTriggered(true);
-    const winUrl = downloadUrls.win32 || `/api/agent/installer?platform=win32&token=${pairToken || "NEXUS"}`;
-    // Direct native browser download trigger
-    window.location.href = winUrl;
+    try { localStorage.setItem("nexus-agent-installed", "true"); } catch { }
+    setPreviouslyInstalled(true);
   };
 
   const copyCommand = () => {
@@ -89,15 +102,25 @@ export default function LocalAgentDesktopCard() {
               <span className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase flex items-center gap-1 ${
                 isConnected
                   ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                  : previouslyInstalled
+                  ? "bg-blue-500/20 text-blue-300 border border-blue-500/30"
                   : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
               }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${isConnected ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`}></span>
-                {isConnected ? "AGENT CONNECTED & ACTIVE" : "NOT INSTALLED / OFFLINE"}
+                <span className={`w-1.5 h-1.5 rounded-full ${
+                  isConnected ? "bg-emerald-400 animate-pulse" : previouslyInstalled ? "bg-blue-400 animate-pulse" : "bg-amber-400"
+                }`}></span>
+                {isConnected
+                  ? "AGENT CONNECTED & ACTIVE"
+                  : previouslyInstalled
+                  ? "RECONNECTING..."
+                  : "NOT INSTALLED / OFFLINE"}
               </span>
             </div>
             <p className="text-xs text-zinc-400 mt-0.5">
               {isConnected
                 ? "Streaming your local PC hard drive files & Git operations in real time."
+                : previouslyInstalled
+                ? "Agent was previously installed. Waiting for background agent to reconnect..."
                 : "Install the lightweight agent once to enable local PC file scanning in Cloud mode."}
             </p>
           </div>
@@ -138,9 +161,64 @@ export default function LocalAgentDesktopCard() {
               {agent.allowedPaths.join(", ")}
             </div>
           )}
+
+          <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-mono">
+            <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+            <span>Auto-starts on Windows boot • Persistent background sync</span>
+          </div>
+        </div>
+      ) : previouslyInstalled && !isConnected ? (
+        /* STATE 2: PREVIOUSLY INSTALLED — RECONNECTING */
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl border border-blue-500/30 bg-blue-500/10 flex items-center justify-between text-xs text-blue-200">
+            <div className="flex items-center gap-2.5 font-medium">
+              <RefreshCw className="w-4 h-4 text-blue-400 animate-spin shrink-0" />
+              <span>
+                {reconnectAttempts < 5
+                  ? "Reconnecting to your desktop agent... This is automatic if the agent is running."
+                  : "Desktop agent not responding. It may not be running on your computer right now."}
+              </span>
+            </div>
+          </div>
+
+          {reconnectAttempts >= 5 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-950/80 space-y-3">
+                <h5 className="font-bold text-white text-xs">Re-launch Desktop Agent</h5>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  The agent auto-starts on boot, but if your PC was restarted or the agent was stopped, re-launch it:
+                </p>
+                <a
+                  href={activeDownloadUrl}
+                  download="nexus-agent-start.cmd"
+                  onClick={handleDownloadClick}
+                  className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 text-center"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>Re-launch Agent</span>
+                </a>
+              </div>
+
+              <div className="p-4 rounded-xl border border-zinc-800 bg-zinc-950/80 space-y-3">
+                <h5 className="font-bold text-white text-xs">Fresh Install</h5>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                  If re-launching doesn&apos;t work, download a fresh installer with a new pairing token:
+                </p>
+                <a
+                  href={activeDownloadUrl}
+                  download="nexus-agent-start.cmd"
+                  onClick={handleDownloadClick}
+                  className="w-full py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs transition-all border border-zinc-700 flex items-center justify-center gap-2 text-center"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Fresh Installer</span>
+                </a>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
-        /* STATE 2: AGENT NOT INSTALLED / OFFLINE (STEP BY STEP GUIDE) */
+        /* STATE 3: NEVER INSTALLED — FULL SETUP GUIDE */
         <div className="space-y-6">
           {/* Alert Banner */}
           <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 flex items-center justify-between text-xs text-amber-200">
@@ -158,7 +236,7 @@ export default function LocalAgentDesktopCard() {
           <div className="space-y-3">
             <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
               <Zap className="w-4 h-4 text-indigo-400" />
-              Step-by-Step Installation & Launch Guide
+              One-Time Setup (Auto-starts on boot after first install)
             </h4>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -180,7 +258,7 @@ export default function LocalAgentDesktopCard() {
                 <a
                   href={activeDownloadUrl}
                   download="nexus-agent-start.cmd"
-                  onClick={() => setDownloadTriggered(true)}
+                  onClick={handleDownloadClick}
                   className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-all shadow-md shadow-indigo-500/20 flex items-center justify-center gap-2 text-center"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -217,9 +295,9 @@ export default function LocalAgentDesktopCard() {
                     </span>
                     <span className="text-[10px] font-mono text-zinc-500 font-bold uppercase">AUTO-SYNC</span>
                   </div>
-                  <h5 className="font-bold text-white text-xs">Automatic Connection</h5>
+                  <h5 className="font-bold text-white text-xs">Automatic & Persistent</h5>
                   <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Once opened, the agent connects securely and this banner turns green automatically.
+                    Agent auto-starts on every boot. This banner turns green automatically. You never need to re-install.
                   </p>
                 </div>
 

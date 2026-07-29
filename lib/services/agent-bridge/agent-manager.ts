@@ -39,12 +39,16 @@ class AgentBridgeManager extends EventEmitter {
    * Get active agent for a logged-in user
    */
   public getAgentForUser(userId: string): ConnectedAgent | null {
-    const agent = this.activeAgents.get(userId);
+    let agent = this.activeAgents.get(userId);
+    if (!agent) {
+      // Fallback to dev_local_user or any active agent registered on this instance
+      agent = this.activeAgents.get("dev_local_user") || Array.from(this.activeAgents.values())[0];
+    }
     if (!agent) return null;
 
     // Heartbeat check: consider stale if no ping for 30s
     if (Date.now() - agent.lastPingTime > 30000) {
-      this.unregisterAgent(userId);
+      this.unregisterAgent(agent.userId);
       return null;
     }
     return agent;

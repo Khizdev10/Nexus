@@ -10,14 +10,84 @@ export async function GET(request: Request) {
   const serverUrl = `${protocol}://${host}`;
 
   if (platform === "win32") {
-    // Zero-Terminal Launcher with System Tray Icon Notification
+    // Unbreakable Windows Agent Installer with Clean Daemon JS File & Startup Registration
     const cmdContent = `@echo off
 title Nexus Local PC Agent
 cls
 set "PATH=%SystemRoot%\\System32;%SystemRoot%\\System32\\WindowsPowerShell\\v1.0;%SystemRoot%\\System32\\Wbem;%ProgramFiles%\\nodejs;%ProgramFiles(x86)%\\nodejs;%LOCALAPPDATA%\\Programs\\node;%PATH%"
 
 set "NODE_EXEC=node"
+set "CONFIG_DIR=%APPDATA%\\nexus-agent"
+set "CONFIG_FILE=%CONFIG_DIR%\\config.json"
+set "DAEMON_FILE=%CONFIG_DIR%\\daemon.js"
+set "STARTUP_FILE=%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\NexusAgent.cmd"
 
+:: =============================================
+:: STEP 1: Save persistent config to AppData
+:: =============================================
+if not exist "%CONFIG_DIR%" mkdir "%CONFIG_DIR%"
+
+:: Write config.json
+echo {"serverUrl":"${serverUrl}","token":"${token}","installedAt":"%DATE% %TIME%"} > "%CONFIG_FILE%"
+
+:: =============================================
+:: STEP 2: Write clean daemon.js script
+:: =============================================
+(
+echo const fs = require('fs');
+echo const path = require('path');
+echo const os = require('os');
+echo const http = require('http');
+echo const https = require('https');
+echo const configPath = path.join(process.env.APPDATA ^|^| path.join(os.homedir(), 'AppData', 'Roaming'), 'nexus-agent', 'config.json');
+echo function getSyncConfig() {
+echo   try {
+echo     if (fs.existsSync(configPath)) return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+echo   } catch(e) {}
+echo   return { serverUrl: '${serverUrl}', token: '${token}' };
+echo }
+echo function ping() {
+echo   try {
+echo     const config = getSyncConfig();
+echo     const serverUrl = config.serverUrl ^|^| '${serverUrl}';
+echo     const token = config.token ^|^| '${token}';
+echo     const defaultPaths = ['c:\\\\coding\\\\projects', path.join(os.homedir(), 'projects'), path.join(os.homedir(), 'source', 'repos')];
+echo     const allowedPaths = defaultPaths.filter(p =^> fs.existsSync(p));
+echo     const url = new URL(serverUrl + '/api/agent/pair');
+echo     const mod = url.protocol === 'https:' ? https : http;
+echo     const payload = JSON.stringify({ token, hostname: os.hostname(), platform: os.platform(), allowedPaths });
+echo     const req = mod.request(url, {
+echo       method: 'POST',
+echo       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+echo     }, res =^> {
+echo       let d = '';
+echo       res.on('data', c =^> d += c);
+echo     });
+echo     req.on('error', () =^> {});
+echo     req.write(payload);
+echo     req.end();
+echo   } catch (e) {}
+echo }
+echo ping();
+echo setInterval(ping, 3000);
+) > "%DAEMON_FILE%"
+
+:: =============================================
+:: STEP 3: Register auto-start on Windows boot
+:: =============================================
+(
+echo @echo off
+echo title Nexus Agent Background
+echo set "PATH=%%SystemRoot%%\\System32;%%SystemRoot%%\\System32\\WindowsPowerShell\\v1.0;%%ProgramFiles%%\\nodejs;%%LOCALAPPDATA%%\\Programs\\node;%%PATH%%"
+echo set "NODE_EXEC=node"
+echo where node ^>nul 2^>nul
+echo if %%errorlevel%% neq 0 if exist "%%TEMP%%\\nexus-node\\node.exe" set "NODE_EXEC=%%TEMP%%\\nexus-node\\node.exe"
+echo start /min "" "%%NODE_EXEC%%" "%DAEMON_FILE%"
+) > "%STARTUP_FILE%"
+
+:: =============================================
+:: STEP 4: Resolve Node.js Runtime
+:: =============================================
 where node >nul 2>nul
 if %errorlevel% equ 0 (
     goto RUN_AGENT
@@ -32,50 +102,47 @@ echo Initializing Nexus Desktop Agent... Please wait a moment...
 
 if not exist "%TEMP%\\nexus-node" mkdir "%TEMP%\\nexus-node"
 
-:: Method 1: PowerShell with explicit System32 path
+:: Method 1: PowerShell
 if exist "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" (
     "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $wc = New-Object System.Net.WebClient; $wc.DownloadFile('https://nodejs.org/dist/v20.11.1/win-x64/node.exe', '$env:TEMP\\nexus-node\\node.exe');" >nul 2>nul
 )
-
 if exist "%TEMP%\\nexus-node\\node.exe" (
     set "NODE_EXEC=%TEMP%\\nexus-node\\node.exe"
     goto RUN_AGENT
 )
 
-:: Method 2: Curl fallback
+:: Method 2: Curl
 if exist "%SystemRoot%\\System32\\curl.exe" (
     "%SystemRoot%\\System32\\curl.exe" -sSL "https://nodejs.org/dist/v20.11.1/win-x64/node.exe" -o "%TEMP%\\nexus-node\\node.exe" >nul 2>nul
 )
-
 if exist "%TEMP%\\nexus-node\\node.exe" (
     set "NODE_EXEC=%TEMP%\\nexus-node\\node.exe"
     goto RUN_AGENT
 )
 
-:: Method 3: Bitsadmin fallback
+:: Method 3: Bitsadmin
 if exist "%SystemRoot%\\System32\\bitsadmin.exe" (
     "%SystemRoot%\\System32\\bitsadmin.exe" /transfer nexusDownload /download /priority foreground "https://nodejs.org/dist/v20.11.1/win-x64/node.exe" "%TEMP%\\nexus-node\\node.exe" >nul 2>nul
 )
-
 if exist "%TEMP%\\nexus-node\\node.exe" (
     set "NODE_EXEC=%TEMP%\\nexus-node\\node.exe"
     goto RUN_AGENT
 )
 
-echo ❌ Setup encountered a network delay.
+echo Setup encountered a network delay.
 pause
 exit /b 1
 
 :RUN_AGENT
-echo.
-echo 🟢 NEXUS AGENT CONNECTED & MINIMIZING TO SYSTEM TRAY...
-echo.
+:: =============================================
+:: STEP 5: Launch Agent Daemon & System Tray
+:: =============================================
 
-:: 1. Launch Node agent in detached background mode
-start /b "" "%NODE_EXEC%" -e "const fs=require('fs'),path=require('path'),os=require('os'),http=require('http'),https=require('https');const serverUrl='${serverUrl}',token='${token}';const defaultPaths=['c:\\\\coding\\\\projects',path.join(os.homedir(),'projects'),path.join(os.homedir(),'source','repos')];const allowedPaths=defaultPaths.filter(p=>fs.existsSync(p));function ping(){try{const url=new URL(serverUrl+'/api/agent/pair');const mod=url.protocol==='https:'?https:http;const payload=JSON.stringify({token,hostname:os.hostname(),platform:os.platform(),allowedPaths});const req=mod.request(url,{method:'POST',headers:{'Content-Type':'application/json','Content-Length':Buffer.byteLength(payload)}},res=>{let d='';res.on('data',c=>d+=c);});req.on('error',()=>{});req.write(payload);req.end();}catch(e){}}ping();setInterval(ping,3000);"
+:: Launch daemon script in minimized background mode
+start /min "" "%NODE_EXEC%" "%DAEMON_FILE%"
 
-:: 2. Launch System Tray Icon & Toast Notification in Hidden Mode
-start /b "" "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; $n.BalloonTipTitle = 'Nexus Desktop Agent'; $n.BalloonTipText = '🟢 Agent Active & Synced in System Tray'; $n.Text = 'Nexus Desktop Agent'; $n.Visible = $true; $n.ShowBalloonTip(3000); Start-Sleep -Seconds 86400" >nul 2>nul
+:: System Tray notification
+start /b "" "%SystemRoot%\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; $n.BalloonTipTitle = 'Nexus Desktop Agent'; $n.BalloonTipText = 'Agent Active - Auto-starts on boot'; $n.Text = 'Nexus Desktop Agent (Active)'; $n.Visible = $true; $n.ShowBalloonTip(3000); Start-Sleep -Seconds 86400" >nul 2>nul
 
 timeout /t 1 >nul
 exit /b 0
@@ -91,21 +158,53 @@ exit /b 0
 
   // Mac / Linux shell script fallback
   const shContent = `#!/bin/bash
-echo "Starting Nexus Local Desktop Agent in background..."
-nohup node -e "
-const serverUrl = '${serverUrl}';
-const token = '${token}';
+CONFIG_DIR="$HOME/.nexus-agent"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+DAEMON_FILE="$CONFIG_DIR/daemon.js"
+mkdir -p "$CONFIG_DIR"
+
+echo '{"serverUrl":"${serverUrl}","token":"${token}"}' > "$CONFIG_FILE"
+
+cat << 'EOF' > "$DAEMON_FILE"
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const http = require('http');
+const https = require('https');
+const configPath = path.join(os.homedir(), '.nexus-agent', 'config.json');
+function getSyncConfig() {
+  try {
+    if (fs.existsSync(configPath)) return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch(e) {}
+  return { serverUrl: '${serverUrl}', token: '${token}' };
+}
 function ping() {
-  fetch(serverUrl + '/api/agent/pair', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ token, hostname: require('os').hostname(), platform: require('os').platform() })
-  }).catch(() => {});
+  try {
+    const config = getSyncConfig();
+    const serverUrl = config.serverUrl || '${serverUrl}';
+    const token = config.token || '${token}';
+    const url = new URL(serverUrl + '/api/agent/pair');
+    const mod = url.protocol === 'https:' ? https : http;
+    const payload = JSON.stringify({ token, hostname: os.hostname(), platform: os.platform() });
+    const req = mod.request(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) }
+    }, res => {
+      let d = '';
+      res.on('data', c => d += c);
+    });
+    req.on('error', () => {});
+    req.write(payload);
+    req.end();
+  } catch (e) {}
 }
 ping();
 setInterval(ping, 3000);
-" > /dev/null 2>&1 &
-echo "Nexus Agent started in background. Minimizing..."
+EOF
+
+echo "Starting Nexus Local Desktop Agent in background..."
+nohup node "$DAEMON_FILE" > /dev/null 2>&1 &
+echo "Nexus Agent started. Closing terminal..."
 exit 0
 `;
 

@@ -16,7 +16,7 @@ export default async function GitEnginePage({ searchParams }: GitEnginePageProps
   const token = await getUserGitHubToken();
   const initialMode = params.mode || "local";
 
-  const repos = token ? await getUserRepositories(token, 20) : [];
+  const repos = token ? await getUserRepositories(token, 100) : [];
 
   // Determine selected repo
   const selectedRepoName = params.repo || (repos.length > 0 ? repos[0].name : "");

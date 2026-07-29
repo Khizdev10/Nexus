@@ -9,6 +9,7 @@ import LocalAgentDesktopCard from "@/components/agent/LocalAgentDesktopCard";
 export default function LocalProjectsScanner() {
   const [isMounted, setIsMounted] = useState(false);
   const [rootPath, setRootPath] = useState("c:\\coding\\projects");
+  const [savedPaths, setSavedPaths] = useState<string[]>([]);
   const [projects, setProjects] = useState<LocalProject[]>([]);
   const [selectedProject, setSelectedProject] = useState<LocalProject | null>(null);
   const [loading, setLoading] = useState(true);
@@ -20,8 +21,46 @@ export default function LocalProjectsScanner() {
   const [selectedDiffFile, setSelectedDiffFile] = useState<string | null>(null);
   const [isAiAdvisorOpen, setIsAiAdvisorOpen] = useState<boolean>(false);
 
+  // Load saved paths and last-used rootPath from localStorage
   useEffect(() => {
     setIsMounted(true);
+    try {
+      const stored = localStorage.getItem("nexus-project-paths");
+      if (stored) {
+        const paths: string[] = JSON.parse(stored);
+        setSavedPaths(paths);
+      }
+      const lastPath = localStorage.getItem("nexus-active-root-path");
+      if (lastPath) {
+        setRootPath(lastPath);
+      }
+    } catch {}
+  }, []);
+
+  // Persist active rootPath to localStorage whenever it changes
+  const setAndPersistRootPath = useCallback((newPath: string) => {
+    setRootPath(newPath);
+    try { localStorage.setItem("nexus-active-root-path", newPath); } catch {}
+  }, []);
+
+  // Save a new path to the saved paths list
+  const addSavedPath = useCallback((pathToSave: string) => {
+    setSavedPaths((prev) => {
+      const normalized = pathToSave.trim();
+      if (!normalized || prev.includes(normalized)) return prev;
+      const updated = [...prev, normalized];
+      try { localStorage.setItem("nexus-project-paths", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
+  }, []);
+
+  // Remove a saved path
+  const removeSavedPath = useCallback((pathToRemove: string) => {
+    setSavedPaths((prev) => {
+      const updated = prev.filter((p) => p !== pathToRemove);
+      try { localStorage.setItem("nexus-project-paths", JSON.stringify(updated)); } catch {}
+      return updated;
+    });
   }, []);
 
   const fetchLocalProjects = useCallback(async (path: string) => {
@@ -55,20 +94,22 @@ export default function LocalProjectsScanner() {
   }, [projects.length]);
 
   useEffect(() => {
-    fetchLocalProjects(rootPath);
-  }, [rootPath, fetchLocalProjects]);
+    if (isMounted) fetchLocalProjects(rootPath);
+  }, [rootPath, isMounted, fetchLocalProjects]);
 
   // Live Auto-Refresh Polling Every 3 Seconds
   useEffect(() => {
-    if (!autoRefresh) return;
+    if (!autoRefresh || !isMounted) return;
     const interval = setInterval(() => {
       fetchLocalProjects(rootPath);
     }, 3000);
     return () => clearInterval(interval);
-  }, [autoRefresh, rootPath, fetchLocalProjects]);
+  }, [autoRefresh, rootPath, isMounted, fetchLocalProjects]);
 
   const handlePathSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setAndPersistRootPath(rootPath);
+    addSavedPath(rootPath);
     fetchLocalProjects(rootPath);
   };
 
@@ -155,6 +196,47 @@ export default function LocalProjectsScanner() {
             Scan Path
           </button>
         </form>
+
+        {/* Saved Project Paths Quick Selector */}
+        {savedPaths.length > 0 && (
+          <div className="space-y-2">
+            <span className="text-[11px] text-zinc-500 font-semibold uppercase tracking-wider">Saved Directories:</span>
+            <div className="flex flex-wrap gap-2">
+              {savedPaths.map((sp) => (
+                <div
+                  key={sp}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono border transition-all cursor-pointer group ${
+                    sp === rootPath
+                      ? "bg-indigo-500/15 text-indigo-300 border-indigo-500/30"
+                      : "bg-zinc-800/80 text-zinc-400 border-zinc-700 hover:border-zinc-600 hover:text-zinc-200"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAndPersistRootPath(sp);
+                      fetchLocalProjects(sp);
+                    }}
+                    className="truncate max-w-[240px]"
+                  >
+                    {sp}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      removeSavedPath(sp);
+                    }}
+                    className="text-zinc-600 hover:text-rose-400 transition-colors ml-1 shrink-0"
+                    title="Remove saved path"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="flex items-center justify-between text-[11px] text-zinc-500 font-mono">
           <span>Root: {rootPath}</span>

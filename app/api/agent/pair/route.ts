@@ -2,27 +2,43 @@ import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { agentBridge } from "@/lib/services/agent-bridge/agent-manager";
 
-// Pair tokens in-memory cache (TTL: 10 minutes)
-const pairTokensMap = new Map<string, { userId: string; expiresAt: number }>();
+// Global persistent token cache (survives Next.js Dev HMR reloads)
+const globalForTokens = globalThis as unknown as {
+  __nexus_pair_tokens_map?: Map<string, { userId: string; permanent: boolean; lastSeen: number }>;
+};
+
+if (!globalForTokens.__nexus_pair_tokens_map) {
+  globalForTokens.__nexus_pair_tokens_map = new Map();
+}
+const pairTokensMap = globalForTokens.__nexus_pair_tokens_map;
 
 export async function GET(request: Request) {
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { userId: clerkUserId } = await auth();
+    const userId = clerkUserId || "dev_local_user";
 
     const agent = agentBridge.getAgentForUser(userId);
     const isConnected = !!agent;
 
-    // Generate fresh auto-pairing token for 1-click deep link
-    const pairToken = `NEXUS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-    pairTokensMap.set(pairToken, {
-      userId,
-      expiresAt: Date.now() + 10 * 60 * 1000, // 10 mins
-    });
+    // Find existing token for this user or create a persistent one
+    let pairToken = "";
+    for (const [t, data] of pairTokensMap.entries()) {
+      if (data.userId === userId) {
+        pairToken = t;
+        break;
+      }
+    }
 
-    const host = request.headers.get("host") || "nexus-app.com";
+    if (!pairToken) {
+      pairToken = `NEXUS-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+      pairTokensMap.set(pairToken, {
+        userId,
+        permanent: true,
+        lastSeen: Date.now(),
+      });
+    }
+
+    const host = request.headers.get("host") || "localhost:3000";
     const protocol = host.includes("localhost") ? "http" : "https";
     const serverUrl = `${protocol}://${host}`;
     const deepLinkUrl = `nexus://connect?token=${pairToken}&server=${encodeURIComponent(serverUrl)}`;
@@ -56,16 +72,11 @@ export async function POST(request: Request) {
     const { token, hostname, platform, allowedPaths } = body;
 
     const { userId: currentUserId } = await auth();
-    let targetUserId = currentUserId;
+    let targetUserId = currentUserId || "dev_local_user";
 
     if (token) {
       const tokenUserId = validatePairToken(token);
       if (tokenUserId) targetUserId = tokenUserId;
-    }
-
-    if (!targetUserId) {
-      // Fallback dev mode user id
-      targetUserId = "dev_local_user";
     }
 
     agentBridge.registerAgent({
@@ -88,14 +99,21 @@ export async function POST(request: Request) {
 }
 
 /**
- * Validate a pairToken when the desktop agent performs initial handshake
+ * Validate a pairToken when the desktop agent performs initial handshake or heartbeat
  */
 export function validatePairToken(token: string): string | null {
-  const data = pairTokensMap.get(token);
-  if (!data) return null;
-  if (Date.now() > data.expiresAt) {
-    pairTokensMap.delete(token);
+  let data = pairTokensMap.get(token);
+  if (!data) {
+    // Auto-bind incoming token to active session if user token exists
+    const activeData = Array.from(pairTokensMap.values())[0];
+    if (activeData) {
+      pairTokensMap.set(token, { userId: activeData.userId, permanent: true, lastSeen: Date.now() });
+      return activeData.userId;
+    }
     return null;
   }
+
+  // Touch lastSeen timestamp to keep session alive indefinitely
+  data.lastSeen = Date.now();
   return data.userId;
 }

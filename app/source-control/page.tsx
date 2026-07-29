@@ -13,7 +13,7 @@ export default async function SourceControlHomePage() {
   const { userId } = await auth();
   const token = await getGitHubOAuthToken();
 
-  const repos: DevOSRepository[] = token ? await fetchGitHubUserRepositories(token, 30) : [];
+  const repos: DevOSRepository[] = token ? await fetchGitHubUserRepositories(token, 100) : [];
 
   let modifiedRepos = 0;
   let aheadRepos = 0;

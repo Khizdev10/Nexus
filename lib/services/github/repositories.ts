@@ -90,7 +90,7 @@ export function clearRepoCache(): void {
   globalForDevOS.__devos_repo_cache = undefined;
 }
 
-export async function fetchGitHubUserRepositories(token: string, limit = 20): Promise<DevOSRepository[]> {
+export async function fetchGitHubUserRepositories(token: string, limit = 100): Promise<DevOSRepository[]> {
   const now = Date.now();
   if (
     globalForDevOS.__devos_repo_cache &&
@@ -116,14 +116,17 @@ export async function fetchGitHubUserRepositories(token: string, limit = 20): Pr
       currentUsername = userData.login;
     }
 
-    const res = await fetch(`https://api.github.com/user/repos?sort=updated&per_page=${limit}&affinity=owner`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "User-Agent": "Nexus-App",
-        Accept: "application/vnd.github.v3+json",
-      },
-      next: { revalidate: 30 },
-    });
+    const res = await fetch(
+      `https://api.github.com/user/repos?sort=updated&per_page=${limit}&affiliation=owner,collaborator,organization_member`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "User-Agent": "Nexus-App",
+          Accept: "application/vnd.github.v3+json",
+        },
+        next: { revalidate: 15 },
+      }
+    );
 
     if (!res.ok) {
       const errorText = await res.text();
