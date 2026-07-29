@@ -85,6 +85,7 @@ export async function POST(request: Request) {
       hostname: hostname || "Local-PC",
       platform: platform || "win32",
       allowedPaths: allowedPaths || ["c:\\coding\\projects"],
+      projects: body.projects || [],
       connectedAt: new Date().toISOString(),
       lastPingTime: Date.now(),
       sendRPC: async (method: string, params: any) => {

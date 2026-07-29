@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import { execSync } from "child_process";
+import { auth } from "@clerk/nextjs/server";
+import { agentBridge } from "@/lib/services/agent-bridge/agent-manager";
 
 export interface LocalFileChange {
   status: "M" | "A" | "D" | "??" | "U" | "R";
@@ -44,6 +46,9 @@ const IGNORED_FOLDERS = new Set([
 
 export async function GET(request: Request) {
   try {
+    const { userId: clerkUserId } = await auth();
+    const userId = clerkUserId || "dev_local_user";
+
     const { searchParams } = new URL(request.url);
     let rootPath = searchParams.get("rootPath") || "c:\\coding\\projects";
     rootPath = path.normalize(rootPath);
@@ -58,11 +63,22 @@ export async function GET(request: Request) {
       return NextResponse.json(cached.data);
     }
 
-    if (isCloudEnvironment && !fs.existsSync(rootPath)) {
+    if (!fs.existsSync(rootPath)) {
+      const agent = agentBridge.getAgentForUser(userId);
+      if (agent && agent.projects && agent.projects.length > 0) {
+        return NextResponse.json({
+          rootPath,
+          isCloudEnvironment,
+          agentConnected: true,
+          projects: agent.projects,
+          totalProjects: agent.projects.length,
+        });
+      }
+
       return NextResponse.json({
         rootPath,
         isCloudEnvironment: true,
-        message: "Running in Cloud Mode (Vercel). Local disk filesystem is disabled.",
+        message: "Running in Cloud Mode (Vercel). Please ensure Nexus Desktop Agent is active on your PC.",
         projects: [],
         totalProjects: 0,
       });

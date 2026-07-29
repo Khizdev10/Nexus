@@ -6,6 +6,7 @@ export interface ConnectedAgent {
   hostname: string;
   platform: string; // "win32" | "darwin" | "linux"
   allowedPaths: string[];
+  projects?: any[];
   connectedAt: string;
   lastPingTime: number;
   sendRPC: (method: string, params: any) => Promise<any>;
