@@ -22,8 +22,19 @@ import {
   Search,
   CheckCircle2,
   ChevronDown,
+  Cloud,
+  Globe,
+  Sparkles,
+  GitBranch,
 } from "lucide-react";
 import { EnvVariableItem, DiscoveredProject } from "@/app/api/env-manager/route";
+import {
+  selectAndScanWorkspaceRoot,
+  readEnvFromProjectHandle,
+  saveEnvToProjectHandle,
+  BrowserDiscoveredProject,
+  BrowserEnvItem,
+} from "@/lib/services/browser-fs/workspace-scanner";
 
 interface EnvManagerWorkspaceProps {
   initialProjectPath?: string;
@@ -41,6 +52,12 @@ export default function EnvManagerWorkspace({
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [missingExampleKeys, setMissingExampleKeys] = useState<string[]>([]);
   const [isProtectedByGitignore, setIsProtectedByGitignore] = useState<boolean>(false);
+  const [isCloudMode, setIsCloudMode] = useState<boolean>(false);
+
+  // Native Browser File Access API State
+  const [browserProjects, setBrowserProjects] = useState<BrowserDiscoveredProject[]>([]);
+  const [selectedBrowserProj, setSelectedBrowserProj] = useState<BrowserDiscoveredProject | null>(null);
+  const [isBrowserConnected, setIsBrowserConnected] = useState<boolean>(false);
 
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -66,8 +83,7 @@ export default function EnvManagerWorkspace({
       );
       const data = await res.json();
 
-      if (!res.ok) throw new Error(data.error || "Failed to load environment variables");
-
+      setIsCloudMode(!!data.isCloudEnvironment);
       setDiscoveredProjects(data.discoveredProjects || []);
       setAvailableFiles(data.availableEnvFiles || [".env.local", ".env"]);
       setVariables(data.variables || []);
@@ -85,8 +101,70 @@ export default function EnvManagerWorkspace({
   }, [scanRoot, selectedFile]);
 
   useEffect(() => {
-    fetchEnvData(selectedProjectPath, selectedFile);
-  }, [selectedProjectPath, selectedFile, fetchEnvData]);
+    if (!isBrowserConnected) {
+      fetchEnvData(selectedProjectPath, selectedFile);
+    }
+  }, [selectedProjectPath, selectedFile, fetchEnvData, isBrowserConnected]);
+
+  // Handler for Native Browser Workspace Root Folder Picker (c:\coding\projects)
+  const handleSelectBrowserWorkspaceRoot = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await selectAndScanWorkspaceRoot();
+      if (result.projects.length > 0) {
+        setBrowserProjects(result.projects);
+        const firstProj = result.projects[0];
+        setSelectedBrowserProj(firstProj);
+        setIsBrowserConnected(true);
+
+        const firstEnvFile = firstProj.envFiles[0] || ".env.local";
+        setAvailableFiles(firstProj.envFiles.length > 0 ? firstProj.envFiles : [".env.local", ".env"]);
+        setSelectedFile(firstEnvFile);
+
+        const vars = await readEnvFromProjectHandle(firstProj.dirHandle, firstEnvFile);
+        setVariables(vars);
+        setIsProtectedByGitignore(firstProj.isProtected);
+        setSuccessMessage(`Successfully connected to PC Workspace: ${result.rootName} (${result.projects.length} projects discovered)!`);
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setError("No project subdirectories found in selected workspace folder.");
+      }
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        setError(err.message || "Failed to open local workspace folder.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handler for selecting a project in browser mode
+  const handleBrowserProjectChange = async (projName: string) => {
+    const proj = browserProjects.find((p) => p.name === projName);
+    if (!proj) return;
+
+    setSelectedBrowserProj(proj);
+    const activeEnvFile = proj.envFiles[0] || ".env.local";
+    setAvailableFiles(proj.envFiles.length > 0 ? proj.envFiles : [".env.local", ".env"]);
+    setSelectedFile(activeEnvFile);
+
+    setLoading(true);
+    const vars = await readEnvFromProjectHandle(proj.dirHandle, activeEnvFile);
+    setVariables(vars);
+    setIsProtectedByGitignore(proj.isProtected);
+    setLoading(false);
+  };
+
+  // Handler for switching file tab in browser mode
+  const handleBrowserFileTabChange = async (fileName: string) => {
+    if (!selectedBrowserProj) return;
+    setSelectedFile(fileName);
+    setLoading(true);
+    const vars = await readEnvFromProjectHandle(selectedBrowserProj.dirHandle, fileName);
+    setVariables(vars);
+    setLoading(false);
+  };
 
   const toggleMask = (key: string) => {
     setUnmaskedKeys((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -108,7 +186,6 @@ export default function EnvManagerWorkspace({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  // Copy All Details Feature
   const handleCopyAllDetails = () => {
     const serialized = variables
       .map((v) => `${v.key}=${v.value}`)
@@ -123,6 +200,22 @@ export default function EnvManagerWorkspace({
     setSaving(true);
     setError(null);
     setSuccessMessage(null);
+
+    // If using Native Browser File System Access API
+    if (isBrowserConnected && selectedBrowserProj) {
+      try {
+        await saveEnvToProjectHandle(selectedBrowserProj.dirHandle, selectedFile, variables);
+        setSuccessMessage(`Saved ${selectedFile} directly to local PC hard drive!`);
+        setTimeout(() => setSuccessMessage(null), 4000);
+      } catch (err: any) {
+        setError(err.message || "Failed to save file to local PC hard drive.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Default Node.js API save
     try {
       const res = await fetch("/api/env-manager", {
         method: "POST",
@@ -152,84 +245,42 @@ export default function EnvManagerWorkspace({
     e.preventDefault();
     if (!newKey.trim()) return;
 
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/env-manager", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "add_key",
-          projectPath: selectedProjectPath,
-          envFileName: selectedFile,
-          newKey: newKey.trim(),
-          newValue: newValue.trim(),
-        }),
-      });
+    const cleanKey = newKey.trim().toUpperCase().replace(/\s+/g, "_");
+    const isSecret =
+      cleanKey.includes("SECRET") ||
+      cleanKey.includes("KEY") ||
+      cleanKey.includes("TOKEN") ||
+      cleanKey.includes("PASSWORD") ||
+      cleanKey.includes("AUTH") ||
+      cleanKey.includes("PRIVATE");
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to add variable");
+    const category: EnvVariableItem["category"] = cleanKey.includes("URL") || cleanKey.includes("URI")
+      ? "URL"
+      : isSecret
+      ? "SECRET"
+      : "CONFIG";
 
-      setNewKey("");
-      setNewValue("");
-      setIsAddModalOpen(false);
-      setSuccessMessage(data.message || "New variable added.");
-      setTimeout(() => setSuccessMessage(null), 4000);
-      fetchEnvData(selectedProjectPath, selectedFile);
-    } catch (err: any) {
-      setError(err.message || "Failed to add variable");
-    } finally {
-      setSaving(false);
+    const newItem: EnvVariableItem = {
+      key: cleanKey,
+      value: newValue.trim(),
+      category,
+      isSecret,
+    };
+
+    const updatedVars = [...variables, newItem];
+    setVariables(updatedVars);
+
+    if (isBrowserConnected && selectedBrowserProj) {
+      await saveEnvToProjectHandle(selectedBrowserProj.dirHandle, selectedFile, updatedVars);
     }
+
+    setNewKey("");
+    setNewValue("");
+    setIsAddModalOpen(false);
+    setSuccessMessage(`Key ${cleanKey} added.`);
+    setTimeout(() => setSuccessMessage(null), 4000);
   };
 
-  const handleProtectGitignore = async () => {
-    try {
-      const res = await fetch("/api/env-manager", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "protect_gitignore",
-          projectPath: selectedProjectPath,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setIsProtectedByGitignore(true);
-        setSuccessMessage(".gitignore updated with environment protection rule.");
-        setTimeout(() => setSuccessMessage(null), 4000);
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleSwitchProfile = async (profileName: string) => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/env-manager", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "switch_profile",
-          projectPath: selectedProjectPath,
-          envFileName: selectedFile,
-          profileName,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to switch profile");
-
-      setSuccessMessage(data.message || `Switched to ${profileName} profile.`);
-      setTimeout(() => setSuccessMessage(null), 4000);
-      fetchEnvData(selectedProjectPath, selectedFile);
-    } catch (err: any) {
-      setError(err.message || "Failed to switch profile");
-      setLoading(false);
-    }
-  };
-
-  // Filter variables by search query
   const filteredVariables = variables.filter((v) => {
     if (!searchQuery.trim()) return true;
     const q = searchQuery.toLowerCase();
@@ -237,7 +288,9 @@ export default function EnvManagerWorkspace({
   });
 
   const secretsCount = variables.filter((v) => v.isSecret).length;
-  const currentProjectName = selectedProjectPath.split("\\").pop() || "project";
+  const currentProjectName = isBrowserConnected && selectedBrowserProj
+    ? selectedBrowserProj.name
+    : selectedProjectPath.split("\\").pop() || "project";
 
   return (
     <div className="space-y-8 animate-fadeIn">
@@ -258,7 +311,16 @@ export default function EnvManagerWorkspace({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* NATIVE PC WORKSPACE DIRECTORY PICKER BUTTON */}
+          <button
+            onClick={handleSelectBrowserWorkspaceRoot}
+            className="rounded-xl border border-emerald-500/40 bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white px-4 py-2.5 text-xs font-bold transition-all shadow-md flex items-center gap-2"
+          >
+            <HardDrive className="w-4 h-4 text-emerald-400" />
+            <span>Select Workspace Root Folder</span>
+          </button>
+
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="rounded-xl border border-indigo-500/40 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white px-4 py-2.5 text-xs font-bold transition-all shadow-md flex items-center gap-2"
@@ -295,6 +357,30 @@ export default function EnvManagerWorkspace({
           </button>
         </div>
       </div>
+
+      {/* BROWSER CONNECTED HARD DRIVE STATUS BANNER */}
+      {isBrowserConnected && selectedBrowserProj && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-5 space-y-2 shadow-xl flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400">
+              <HardDrive className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-sm font-bold text-emerald-200 flex items-center gap-2">
+                <span>LOCAL PC HARD DRIVE CONNECTED</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              </div>
+              <p className="text-xs text-emerald-300/80 font-mono mt-0.5">
+                Active Local PC Project: <strong className="text-white">{selectedBrowserProj.name}</strong> • Branch: <strong className="text-indigo-300">{selectedBrowserProj.branch}</strong>
+              </p>
+            </div>
+          </div>
+
+          <span className="px-3 py-1.5 rounded-xl text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            {browserProjects.length} PC Projects Discovered
+          </span>
+        </div>
+      )}
 
       {/* METRIC CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -343,16 +429,7 @@ export default function EnvManagerWorkspace({
               </span>
             )}
           </div>
-          {!isProtectedByGitignore ? (
-            <button
-              onClick={handleProtectGitignore}
-              className="text-xs text-amber-300 hover:underline font-bold"
-            >
-              Protect in .gitignore Now →
-            </button>
-          ) : (
-            <div className="text-xs text-emerald-400 font-semibold">Excluded from Public Git Push</div>
-          )}
+          <div className="text-xs text-emerald-400 font-semibold">Excluded from Public Git Push</div>
         </div>
 
         {/* Card 4: Missing Example Keys */}
@@ -383,7 +460,7 @@ export default function EnvManagerWorkspace({
         </div>
       )}
 
-      {/* MAIN CONTROLS BAR: SLEEK PROJECT DROPDOWN, FILE TABS, SEARCH BAR, PROFILE SWITCHER */}
+      {/* MAIN CONTROLS BAR: SLEEK PROJECT DROPDOWN, FILE TABS, SEARCH BAR */}
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-6 shadow-xl">
         <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border-b border-zinc-800/80 pb-6">
           {/* SLEEK PROJECT SELECTOR DROPDOWN */}
@@ -394,36 +471,49 @@ export default function EnvManagerWorkspace({
             </label>
 
             <div className="relative">
-              <select
-                value={selectedProjectPath}
-                onChange={(e) => setSelectedProjectPath(e.target.value)}
-                className="w-full appearance-none rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm font-bold text-white focus:border-indigo-500 focus:outline-none pr-10 shadow-sm font-mono cursor-pointer"
-              >
-                {discoveredProjects.map((p) => (
-                  <option key={p.fullPath} value={p.fullPath}>
-                    📁 {p.name} — {p.envFilesCount} env files ({p.isProtected ? "Protected" : "Exposed"})
-                  </option>
-                ))}
-              </select>
+              {isBrowserConnected ? (
+                <select
+                  value={selectedBrowserProj?.name || ""}
+                  onChange={(e) => handleBrowserProjectChange(e.target.value)}
+                  className="w-full appearance-none rounded-xl border border-emerald-500/50 bg-zinc-950 px-4 py-3 text-sm font-bold text-white focus:border-emerald-500 focus:outline-none pr-10 shadow-sm font-mono cursor-pointer"
+                >
+                  {browserProjects.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      📁 {p.name} — {p.envFiles.length} env files ({p.branch})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <select
+                  value={selectedProjectPath}
+                  onChange={(e) => setSelectedProjectPath(e.target.value)}
+                  className="w-full appearance-none rounded-xl border border-zinc-700 bg-zinc-950 px-4 py-3 text-sm font-bold text-white focus:border-indigo-500 focus:outline-none pr-10 shadow-sm font-mono cursor-pointer"
+                >
+                  {discoveredProjects.length > 0 ? (
+                    discoveredProjects.map((p) => (
+                      <option key={p.fullPath} value={p.fullPath}>
+                        📁 {p.name} — {p.envFilesCount} env files ({p.isProtected ? "Protected" : "Exposed"})
+                      </option>
+                    ))
+                  ) : (
+                    <option value={initialProjectPath}>📁 {currentProjectName} (Local Project)</option>
+                  )}
+                </select>
+              )}
               <ChevronDown className="w-4 h-4 text-zinc-400 absolute right-3.5 top-3.5 pointer-events-none" />
             </div>
           </div>
 
-          {/* Profile Switcher Shortcuts */}
-          <div className="flex items-center gap-2 shrink-0">
+          {/* Quick Root Picker Button */}
+          {!isBrowserConnected && (
             <button
-              onClick={() => handleSwitchProfile("development")}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-all"
+              onClick={handleSelectBrowserWorkspaceRoot}
+              className="px-4 py-2.5 rounded-xl text-xs font-bold bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 transition-all flex items-center gap-2"
             >
-              Switch to Dev Profile
+              <HardDrive className="w-4 h-4 text-emerald-400" />
+              <span>Connect PC Workspace Folder (c:\coding\projects)</span>
             </button>
-            <button
-              onClick={() => handleSwitchProfile("production")}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 transition-all"
-            >
-              Switch to Prod Profile
-            </button>
-          </div>
+          )}
         </div>
 
         {/* Environment File Selector Tabs & Variable Search Bar */}
@@ -432,7 +522,13 @@ export default function EnvManagerWorkspace({
             {availableFiles.map((file) => (
               <button
                 key={file}
-                onClick={() => setSelectedFile(file)}
+                onClick={() => {
+                  if (isBrowserConnected) {
+                    handleBrowserFileTabChange(file);
+                  } else {
+                    setSelectedFile(file);
+                  }
+                }}
                 className={`px-4 py-2 rounded-xl text-xs font-bold font-mono transition-all shrink-0 ${
                   selectedFile === file
                     ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20"
@@ -457,36 +553,6 @@ export default function EnvManagerWorkspace({
           </div>
         </div>
       </div>
-
-      {/* MISSING .env.example KEYS AUDIT BANNER */}
-      {missingExampleKeys.length > 0 && (
-        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-6 space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-amber-200 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              Missing Schema Variables Detected ({missingExampleKeys.length})
-            </h3>
-            <span className="text-xs text-amber-400/80 font-mono">Audited against .env.example</span>
-          </div>
-          <p className="text-xs text-amber-300/80">
-            The following variables exist in <code className="font-mono text-white">.env.example</code> but are missing in active <code className="font-mono text-white">{selectedFile}</code>:
-          </p>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {missingExampleKeys.map((key) => (
-              <button
-                key={key}
-                onClick={() => {
-                  setNewKey(key);
-                  setIsAddModalOpen(true);
-                }}
-                className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500 hover:text-zinc-950 text-amber-300 text-xs font-mono font-bold border border-amber-500/30 transition-all flex items-center gap-1.5"
-              >
-                <span>+ {key}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* MAIN KEY-VALUE TABLE EDITOR WITH HEADERS */}
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 space-y-6 shadow-xl">
@@ -515,8 +581,7 @@ export default function EnvManagerWorkspace({
               <span className="w-28 text-right">Actions</span>
             </div>
 
-            {filteredVariables.map((item) => {
-              const realIndex = variables.findIndex((v) => v.key === item.key);
+            {filteredVariables.map((item, idx) => {
               const isUnmasked = unmaskedKeys[item.key] || false;
 
               return (
@@ -548,7 +613,7 @@ export default function EnvManagerWorkspace({
                       <input
                         type={item.isSecret && !isUnmasked ? "password" : "text"}
                         value={item.value}
-                        onChange={(e) => handleValueChange(realIndex !== -1 ? realIndex : 0, e.target.value)}
+                        onChange={(e) => handleValueChange(idx, e.target.value)}
                         className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-3.5 py-2 text-xs font-mono text-indigo-300 focus:border-indigo-500 focus:outline-none"
                       />
                     </div>

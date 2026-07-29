@@ -48,6 +48,8 @@ export async function GET(request: Request) {
     let rootPath = searchParams.get("rootPath") || "c:\\coding\\projects";
     rootPath = path.normalize(rootPath);
 
+    const isCloudEnvironment = !!process.env.VERCEL || !fs.existsSync(rootPath);
+
     const now = Date.now();
     const cached = memoryCache[rootPath];
 
@@ -56,9 +58,19 @@ export async function GET(request: Request) {
       return NextResponse.json(cached.data);
     }
 
+    if (isCloudEnvironment && !fs.existsSync(rootPath)) {
+      return NextResponse.json({
+        rootPath,
+        isCloudEnvironment: true,
+        message: "Running in Cloud Mode (Vercel). Local disk filesystem is disabled.",
+        projects: [],
+        totalProjects: 0,
+      });
+    }
+
     if (!fs.existsSync(rootPath)) {
       return NextResponse.json(
-        { error: `Directory not found: ${rootPath}`, projects: [] },
+        { error: `Directory not found: ${rootPath}`, projects: [], isCloudEnvironment },
         { status: 404 }
       );
     }
@@ -174,6 +186,7 @@ export async function GET(request: Request) {
 
     const responsePayload = {
       rootPath,
+      isCloudEnvironment: false,
       totalProjects: projects.length,
       projects,
     };
@@ -188,7 +201,7 @@ export async function GET(request: Request) {
   } catch (error: any) {
     console.error("Local projects API error:", error);
     return NextResponse.json(
-      { error: error?.message || "Failed to scan local projects", projects: [] },
+      { error: error?.message || "Failed to scan local projects", projects: [], isCloudEnvironment: !!process.env.VERCEL },
       { status: 500 }
     );
   }

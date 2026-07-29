@@ -120,6 +120,7 @@ export async function GET(req: Request) {
     const targetPath = searchParams.get("projectPath") || "c:\\coding\\projects\\devi";
     const scanRoot = searchParams.get("scanRoot") || "c:\\coding\\projects";
 
+    const isCloudEnvironment = !!process.env.VERCEL || !fs.existsSync(targetPath);
     const resolvedPath = path.resolve(targetPath);
 
     // Dynamic discovery of all env files in target path
@@ -162,9 +163,18 @@ export async function GET(req: Request) {
 
     if (!fs.existsSync(resolvedPath)) {
       return NextResponse.json({
+        isCloudEnvironment: true,
         discoveredProjects,
-        error: "Target project directory does not exist on disk.",
-      }, { status: 404 });
+        projectPath: targetPath,
+        availableEnvFiles: [".env.local", ".env"],
+        selectedEnvFile: ".env.local",
+        hasActiveFile: false,
+        isProtectedByGitignore: true,
+        variables: [],
+        missingExampleKeys: [],
+        stats: { total: 0, secrets: 0, urls: 0, missing: 0 },
+        message: "Running in Cloud Mode (Vercel). Direct local disk inspection is disabled.",
+      });
     }
 
     const activeFilePath = path.join(resolvedPath, envFileName);
@@ -201,6 +211,7 @@ export async function GET(req: Request) {
     const urlsCount = variables.filter((v) => v.category === "URL").length;
 
     return NextResponse.json({
+      isCloudEnvironment: false,
       discoveredProjects,
       projectPath: resolvedPath,
       availableEnvFiles,
@@ -232,7 +243,9 @@ export async function POST(req: Request) {
     const resolvedPath = path.resolve(targetPath);
 
     if (!fs.existsSync(resolvedPath)) {
-      return NextResponse.json({ error: "Target directory not found." }, { status: 404 });
+      return NextResponse.json({
+        error: "Direct local file modification is disabled when running in Cloud Mode (Vercel). Manage environment variables via Vercel Project Settings or GitHub Actions Secrets.",
+      }, { status: 400 });
     }
 
     const filePath = path.join(resolvedPath, selectedFile);
